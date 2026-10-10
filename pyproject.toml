@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slop-check"
+version = "0.1.0"
+description = "A small fine-tuned model that flags AI slop in Python pull requests"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []          # core (rules + GitHub posting) is stdlib-only
+
+[project.optional-dependencies]
+infer = ["llama-cpp-python>=0.3.0", "huggingface_hub>=0.24"]   # CI / any CPU
+mlx = ["mlx-lm>=0.30"]                                           # Apple Silicon inference
+data = ["datasets>=2.19"]
+train-unsloth = ["unsloth", "datasets>=2.19", "huggingface_hub>=0.24"]   # NVIDIA GPU
+train-mlx = ["mlx-lm>=0.30", "huggingface_hub>=0.24"]                    # Apple Silicon
+dev = ["pytest>=8"]
+
+[project.scripts]
+slopcheck = "slopcheck.cli:main"
+
+[tool.setuptools]
+packages = ["slopcheck"]

@@ -1,0 +1,21 @@
+# Dogfood: run slop-check on this repo's own PRs. Copy this file into any repo
+# and change `uses: ./` to `uses: thebunnyweb/slop-check@v0`.
+name: slop-check
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write   # summary comment + inline review
+
+jobs:
+  slop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4   # only needed for `uses: ./`; the diff comes from the API
+      - uses: ./
+        with:
+          model: ""                 # set to your HF repo once trained, e.g. you/slop-check-1.5b-gguf
+          post_mode: summary-only   # switch to `review` once you trust it
+          fail_on: ""               # e.g. `high` to block merges

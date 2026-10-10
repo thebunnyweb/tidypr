@@ -1,0 +1,83 @@
+name: slop-check
+description: Flag AI slop in Python PR diffs with a small fine-tuned model that runs inside CI
+author: thebunnyweb
+branding: { icon: scissors, color: purple }
+
+inputs:
+  model:
+    description: Hugging Face repo id of the GGUF model (empty = rules only, no model download)
+    default: ""
+  model_file:
+    description: GGUF filename or glob inside the repo
+    default: "*Q4_K_M.gguf"
+  post_mode:
+    description: summary-only | review | annotations
+    default: summary-only
+  min_severity:
+    description: Lowest severity reported at all (low | medium | high)
+    default: low
+  min_inline:
+    description: Lowest severity that gets an inline review comment (review mode)
+    default: medium
+  fail_on:
+    description: Fail the job when a finding at or above this severity exists (empty = never fail)
+    default: ""
+  max_findings:
+    description: Hard cap on findings per PR
+    default: "10"
+  token:
+    description: Token used to read the diff and post comments
+    default: ${{ github.token }}
+
+outputs:
+  count:
+    description: Number of findings
+    value: ${{ steps.run.outputs.count }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with: { python-version: "3.11" }
+
+    - name: Cache model + wheels
+      if: inputs.model != ''
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/huggingface
+          ~/.cache/pip
+        key: slop-check-${{ runner.os }}-${{ inputs.model }}-${{ inputs.model_file }}
+
+    - name: Install
+      shell: bash
+      env:
+        MODEL: ${{ inputs.model }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: |
+        if [ -n "$MODEL" ]; then
+          # prebuilt CPU wheels: avoids a 5+ minute llama.cpp compile on every run
+          pip install -q "$ACTION_PATH[infer]" \
+            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+        else
+          pip install -q "$ACTION_PATH"
+        fi
+
+    - id: run
+      name: Review PR
+      shell: bash
+      env:
+        SLOP_TOKEN: ${{ inputs.token }}
+        MODEL: ${{ inputs.model }}
+        MODEL_FILE: ${{ inputs.model_file }}
+        POST_MODE: ${{ inputs.post_mode }}
+        MIN_SEVERITY: ${{ inputs.min_severity }}
+        MIN_INLINE: ${{ inputs.min_inline }}
+        MAX_FINDINGS: ${{ inputs.max_findings }}
+        FAIL_ON: ${{ inputs.fail_on }}
+      run: |
+        args=(--post-mode "$POST_MODE" --min-severity "$MIN_SEVERITY" --min-inline "$MIN_INLINE"
+              --max-findings "$MAX_FINDINGS" --model-file "$MODEL_FILE")
+        if [ -n "$MODEL" ]; then args+=(--backend llamacpp --model "$MODEL"); else args+=(--backend rules); fi
+        if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
+        slopcheck github "${args[@]}"
