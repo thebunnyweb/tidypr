@@ -8,7 +8,7 @@ from tidypr.infer import Backend, ReviewConfig, review_diff, review_hunks
 from tidypr.prompt import build_messages
 from tidypr.rules import check_hunk
 from tidypr.schema import Finding, parse_model_output
-from tidypr.synth import extract_functions, slop_example
+from tidypr.synth import extract_functions, make_example, slop_example
 
 SAMPLE = (Path(__file__).parents[1] / "data/seed/sample_pr.diff").read_text()
 
@@ -110,7 +110,8 @@ def test_synth_labels_point_at_injected_lines():
         for f in findings:
             assert f.line in text and f.end_line in text
             snippet = "\n".join(text[n] for n in range(f.line, f.end_line + 1))
-            marker = {"redundant-comment": "#", "over-defensive": ("except", "if "), "log-noise": "logger",
+            marker = {"redundant-comment": "#", "over-defensive": ("except", "if "),
+                      "log-noise": ("logger", "logging", "print", "log."),
                       "verbose-docstring": '"""', "dead-or-placeholder": "TODO"}[f.category]
             assert any(m in snippet for m in (marker if isinstance(marker, tuple) else (marker,)))
         msgs = build_messages(h, findings)
@@ -175,3 +176,64 @@ def test_post_falls_back_to_annotations_on_fork_pr(capsys):
     f = Finding("a.py", 3, "over-defensive", "high", "swallows", end_line=4)
     assert post(gh, 1, "sha", [f], {}, 10, mode="review", min_inline="medium", model=None) == "annotations"
     assert "::error file=a.py,line=3,endLine=4" in capsys.readouterr().out
+
+
+def test_parse_git_log_p_ignores_commit_messages():
+    log = ("commit abc\nAuthor: x\n\n    Fix the thing\n\n"
+           "diff --git a/m.py b/m.py\n--- a/m.py\n+++ b/m.py\n@@ -1,2 +1,3 @@\n a = 1\n+b = 2\n c = 3\n"
+           "\ncommit def\nAuthor: y\n\n    Second commit message\n")
+    [h] = parse_diff(log)
+    assert [t for _, _, t in h.lines] == ["a = 1", "b = 2", "c = 3"]
+
+
+def test_tests_are_skipped_by_default():
+    diff = "diff --git a/tests/test_x.py b/tests/test_x.py\n--- a/tests/test_x.py\n+++ b/tests/test_x.py\n@@ -1 +1 @@\n-a\n+b\n"
+    assert python_hunks(parse_diff(diff), skip_tests=True) == []
+    assert len(python_hunks(parse_diff(diff))) == 1
+
+
+DECOY_SRC = '''
+import json
+
+
+def load(path, cache=None):
+    data = read_file(path)
+    parsed = json.loads(data)
+    validate(parsed)
+    store(cache, parsed)
+    return parsed
+
+
+def other():
+    pass
+'''
+
+
+def test_decoys_have_no_findings_and_do_not_trip_rules():
+    [func] = [f for f in extract_functions(DECOY_SRC, "m.py") if f.name == "load"]
+    assert func.none_params == ["cache"] and func.before and func.after
+    rng = random.Random(1)
+    made = 0
+    for _ in range(200):
+        ex = make_example(func, rng, "decoy")
+        if ex:
+            h, findings = ex
+            assert findings == [] and check_hunk(h) == []
+            made += 1
+    assert made > 50
+
+
+def test_slop_findings_only_on_added_lines_with_context_around():
+    [func] = [f for f in extract_functions(DECOY_SRC, "m.py") if f.name == "load"]
+    rng = random.Random(2)
+    shapes = set()
+    for _ in range(300):
+        ex = make_example(func, rng, "slop")
+        if not ex:
+            continue
+        h, findings = ex
+        kinds = {n: k for n, k, _ in h.lines}
+        shapes.add(any(k == " " for k in kinds.values()))
+        for f in findings:
+            assert all(kinds[n] == "+" for n in range(f.line, f.end_line + 1))
+    assert shapes == {True, False}   # both partial edits and whole new functions occur

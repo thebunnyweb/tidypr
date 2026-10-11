@@ -28,6 +28,7 @@ def _add_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--no-rules", action="store_true")
     p.add_argument("--min-severity", choices=SEVERITIES, default="low")
     p.add_argument("--max-findings", type=int, default=10)
+    p.add_argument("--include-tests", action="store_true", help="also review tests/ and test_*.py files")
 
 
 def _backend(a):
@@ -36,7 +37,7 @@ def _backend(a):
 
 def cmd_review(a) -> int:
     text = sys.stdin.read() if a.diff == "-" else open(a.diff, encoding="utf-8").read()
-    hunks = python_hunks(parse_diff(text))
+    hunks = python_hunks(parse_diff(text), skip_tests=not a.include_tests)
     findings = review_hunks(hunks, _backend(a), ReviewConfig(a.min_severity, a.max_findings, not a.no_rules))
     if a.format == "json":
         print(findings_json(findings))
@@ -59,7 +60,7 @@ def cmd_github(a) -> int:
         return 0
     token = os.environ.get("TIDYPR_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
     gh = GitHub(os.environ["GITHUB_REPOSITORY"], token)
-    hunks = python_hunks(parse_diff(gh.pr_diff(pr["number"])))
+    hunks = python_hunks(parse_diff(gh.pr_diff(pr["number"])), skip_tests=not a.include_tests)
     findings = review_hunks(hunks, _backend(a), ReviewConfig(a.min_severity, a.max_findings, not a.no_rules))
 
     code_of = {(h.path, n): t for h in hunks for n, _, t in h.lines}

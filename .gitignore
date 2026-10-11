@@ -5,3 +5,6 @@ data/out/
 runs/
 *.gguf
 .pytest_cache/
+data/v*/
+data/tmp/
+*.zip

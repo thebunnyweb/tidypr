@@ -31,21 +31,41 @@ pytest -q
 
 ```bash
 pip install -e ".[data]"
-# Offline: CPython's stdlib as the source of clean human code
-python data/build_dataset.py --out data/out --max-examples 4000 \
-  --source-dir "$(python -c 'import sysconfig;print(sysconfig.get_paths()["stdlib"])')"
-# More data: add --commitpackft 30000 (streams bigcode/commitpackft from Hugging Face)
+STDLIB="$(python -c 'import sysconfig;print(sysconfig.get_paths()["stdlib"])')"
+python data/build_dataset.py --out data/v2 --max-examples 6000 \
+  --commitpackft 40000=3500 \
+  --source ~/code/your-old-repo=1000 \
+  --source "$STDLIB=1500"
 ```
 
-This takes clean functions and injects *known* slop, so labels and fixes are exact. About 45% of examples are left clean (`{"findings": []}`) to teach the model to stay quiet.
+Each `--source DIR=MAX` caps how many examples come from that source. Sources are interleaved, so the mix is what you asked for.
+
+Every example is one of three kinds (`--mix clean,decoy,slop`, default `0.30,0.20,0.50`):
+- **clean:** real code, untouched → `{"findings": []}`
+- **decoy:** code that *looks* like slop but is fine (a specific `except` that logs, a comment that explains *why*, `if arg is None: arg = []`, plain logs, tracked `TODO(#123)`) → `{"findings": []}`
+- **slop:** known slop injected (catch-all excepts, `raise e` re-raises, pointless if/else, comments that narrate, filler docstrings, emoji logs, vague TODOs) → exact labels
+
+Hunks look like real diffs: partial edits with context lines, not only whole new functions.
+
+## 1b. Label a gold set from real PRs (the honest test)
+
+```bash
+git -C ~/code/some-repo log -p --since=2025-01-01 -- '*.py' > /tmp/real.diff
+python data/gold/label.py /tmp/real.diff        # Enter = clean, or "27-28 od h reason"
+python eval/evaluate.py --data data/gold/gold.jsonl                     # rules
+python eval/evaluate.py --data data/gold/gold.jsonl --no-rules \
+  --backend llamacpp --model bunnyweb/tidypr-1.5b-gguf                  # model
+```
+
+Never train on `data/gold/`. Synthetic validation scores look great; only the gold set tells you whether the model works on real code.
 
 ## 2a. Train on a GPU with Unsloth (Kaggle, free)
 
-Follow the steps at the top of `training/kaggle_unsloth.ipynb`: zip this folder (with `data/out/`), upload it as a private Kaggle Dataset, import the notebook, pick **GPU T4 x1** (not P100), turn Internet on, add the `HF_TOKEN` secret, set `HF_REPO`, Run All. Or on any CUDA machine:
+Follow the steps at the top of `training/kaggle_unsloth.ipynb`: zip your dataset folder (e.g. `cd data && zip -r ../tidypr-data.zip v2`), upload it as a private Kaggle Dataset, import the notebook, pick **GPU T4 x1** (not P100), turn Internet on, add the `HF_TOKEN` secret, set `HF_REPO`, Run All. Or on any CUDA machine:
 
 ```bash
 pip install -e ".[train-unsloth]"
-python training/train_unsloth.py --data data/out --out runs/unsloth --gguf q4_k_m \
+python training/train_unsloth.py --data data/v2 --out runs/unsloth --gguf q4_k_m \
   --push bunnyweb/tidypr-1.5b-gguf          # HF_TOKEN must be set
 python training/train_unsloth.py --max-steps 30   # 5-minute smoke test
 ```
@@ -54,7 +74,7 @@ python training/train_unsloth.py --max-steps 30   # 5-minute smoke test
 
 ```bash
 pip install -e ".[train-mlx]"
-python training/train_mlx.py --data data/out --out runs/mlx --fuse     # 0.5B default; fits 8–16 GB
+python training/train_mlx.py --data data/v2 --out runs/mlx --fuse     # 0.5B default; fits 8–16 GB
 # 16 GB+: --base Qwen/Qwen2.5-Coder-1.5B-Instruct. Short on memory: --batch 1 --num-layers 8 --max-seq 2048
 
 # try the adapter before exporting
@@ -115,8 +135,8 @@ The summary comment is edited in place on every push. Inline comments carry a fi
 ## 5. Evaluate
 
 ```bash
-python eval/evaluate.py --data data/out/valid.jsonl                       # rules baseline
-python eval/evaluate.py --data data/out/valid.jsonl --backend llamacpp --model bunnyweb/tidypr-1.5b-gguf --no-rules
+python eval/evaluate.py --data data/v2/valid.jsonl                       # rules baseline
+python eval/evaluate.py --data data/v2/valid.jsonl --backend llamacpp --model bunnyweb/tidypr-1.5b-gguf --no-rules
 ```
 
 The validation set is synthetic, so the rules look better on it than they will on real code. The numbers that count come from the hand-labelled gold set (`data/gold/`, next milestone).
