@@ -130,34 +130,61 @@ def run_vllm(rows, model: str, max_model_len: int, batch: int, quantization: str
             yield r, o.outputs[0].text
 
 
-def run_hf(rows, model: str, batch: int):
+def _batched_generate(model, tok, rows, batch: int, max_len: int, device: str):
+    """Sort by length (less padding), skip prompts too long for the context, greedy decode."""
+    import torch
+
+    tok.padding_side = "left"
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
+    items = []
+    for r in rows:
+        prompt = tok.apply_chat_template(teacher_messages(r), tokenize=False, add_generation_prompt=True)
+        n = len(tok(prompt, add_special_tokens=False)["input_ids"])
+        if n > max_len - 256:
+            yield r, ""   # too long: recorded as invalid, not silently truncated
+            continue
+        items.append((n, r, prompt))
+    items.sort(key=lambda x: x[0])
+    for i in range(0, len(items), batch):
+        chunk = items[i:i + batch]
+        enc = tok([p for _, _, p in chunk], return_tensors="pt", padding=True, add_special_tokens=False).to(device)
+        with torch.inference_mode():
+            gen = model.generate(**enc, max_new_tokens=200, do_sample=False, use_cache=True,
+                                 pad_token_id=tok.pad_token_id)
+        for (_, r, _), g in zip(chunk, gen):
+            yield r, tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True)
+
+
+def run_unsloth(rows, model: str, batch: int, max_len: int):
+    """Default on Kaggle: same stack as training, so no CUDA/torch version clashes."""
+    from unsloth import FastLanguageModel
+
+    m, tok = FastLanguageModel.from_pretrained(model, max_seq_length=max_len, load_in_4bit=True)
+    FastLanguageModel.for_inference(m)
+    yield from _batched_generate(m, tok, rows, batch, max_len, "cuda")
+
+
+def run_hf(rows, model: str, batch: int, max_len: int = 4096):
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-    tok = AutoTokenizer.from_pretrained(model, padding_side="left")
+    tok = AutoTokenizer.from_pretrained(model)
     m = AutoModelForCausalLM.from_pretrained(
         model, device_map="auto",
         quantization_config=BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16))
-    for i in range(0, len(rows), batch):
-        chunk = rows[i:i + batch]
-        prompts = [tok.apply_chat_template(teacher_messages(r), tokenize=False, add_generation_prompt=True)
-                   for r in chunk]
-        enc = tok(prompts, return_tensors="pt", padding=True, truncation=True, max_length=3500).to(m.device)
-        with torch.no_grad():
-            gen = m.generate(**enc, max_new_tokens=220, do_sample=False, pad_token_id=tok.eos_token_id)
-        for r, g in zip(chunk, gen):
-            yield r, tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True)
+    yield from _batched_generate(m, tok, rows, batch, max_len, m.device)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--candidates", default="data/real/candidates.jsonl")
     ap.add_argument("--out", default="data/real/labeled.jsonl")
-    ap.add_argument("--backend", choices=["vllm", "hf"], default="vllm")
-    ap.add_argument("--model", default="Qwen/Qwen2.5-Coder-7B-Instruct-AWQ")
+    ap.add_argument("--backend", choices=["unsloth", "hf", "vllm"], default="unsloth")
+    ap.add_argument("--model", default=None, help="default depends on backend")
     ap.add_argument("--quantization", default="awq", help="vllm only; '' for none")
     ap.add_argument("--max-model-len", type=int, default=4096)
-    ap.add_argument("--batch", type=int, default=64)
+    ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
 
@@ -169,17 +196,24 @@ def main() -> None:
     rows = [r for r in rows if r["id"] not in done]
     if a.limit:
         rows = rows[: a.limit]
-    print(f"labelling {len(rows)} candidates ({len(done)} already done) with {a.model}")
+    model = a.model or {"unsloth": "unsloth/Qwen2.5-Coder-7B-Instruct-bnb-4bit",
+                        "hf": "Qwen/Qwen2.5-Coder-7B-Instruct",
+                        "vllm": "Qwen/Qwen2.5-Coder-7B-Instruct-AWQ"}[a.backend]
+    print(f"labelling {len(rows)} candidates ({len(done)} already done) with {model} via {a.backend}")
 
-    gen = run_vllm(rows, a.model, a.max_model_len, a.batch, a.quantization or None) if a.backend == "vllm" \
-        else run_hf(rows, a.model, max(1, a.batch // 8))
+    if a.backend == "unsloth":
+        gen = run_unsloth(rows, model, a.batch, a.max_model_len)
+    elif a.backend == "hf":
+        gen = run_hf(rows, model, a.batch, a.max_model_len)
+    else:
+        gen = run_vllm(rows, model, a.max_model_len, a.batch * 8, a.quantization or None)
     counts = {"slop": 0, "not_slop": 0, "invalid": 0}
     with out.open("a", encoding="utf-8") as fh:
         for n, (r, text) in enumerate(gen, 1):
             label, finding = parse_teacher(text, r)
             counts[label] += 1
             fh.write(json.dumps({**r, "label": label, "finding": finding, "raw": text[:600]}, ensure_ascii=False) + "\n")
-            if n % 200 == 0:
+            if n % 50 == 0:
                 fh.flush()
                 print(f"  {n}/{len(rows)}  {counts}")
     print("done:", counts)
