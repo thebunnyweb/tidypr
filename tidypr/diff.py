@@ -68,15 +68,30 @@ def parse_diff(diff_text: str) -> list[Hunk]:
     return [h for h in hunks if h.added_lines]
 
 
-def python_hunks(hunks: list[Hunk], skip_tests: bool = False) -> list[Hunk]:
-    out = [h for h in hunks if h.path.endswith(".py")]
+def code_hunks(hunks: list[Hunk], skip_tests: bool = False, languages: set[str] | None = None) -> list[Hunk]:
+    """Hunks in source files of a known language (see tidypr.langs)."""
+    from .langs import language_of
+
+    out = [h for h in hunks if language_of(h.path) and (languages is None or language_of(h.path) in languages)]
     if skip_tests:
-        out = [h for h in out if not _is_test(h.path)]
+        out = [h for h in out if not is_test(h.path)]
     return out
 
 
-def _is_test(path: str) -> bool:
+def python_hunks(hunks: list[Hunk], skip_tests: bool = False) -> list[Hunk]:
+    return code_hunks(hunks, skip_tests, {"Python"})
+
+
+_TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "testing"}
+_TEST_SUFFIXES = ("_test.py", "_test.go", ".test.js", ".test.ts", ".test.tsx", ".test.jsx", ".spec.js", ".spec.ts",
+                  ".spec.tsx", "_spec.rb", "Test.java", "Tests.java", "Test.kt", "Tests.cs")
+
+
+def is_test(path: str) -> bool:
     parts = path.replace("\\", "/").split("/")
     name = parts[-1]
-    return "tests" in parts or "test" in parts or name.startswith("test_") or name.endswith("_test.py") \
+    return bool(_TEST_DIRS & set(parts[:-1])) or name.startswith("test_") or name.endswith(_TEST_SUFFIXES) \
         or name == "conftest.py"
+
+
+_is_test = is_test

@@ -4,10 +4,11 @@ from __future__ import annotations
 import json
 
 from .diff import Hunk
+from .langs import language_of
 from .schema import CATEGORIES, Finding
 
 SYSTEM_PROMPT = (
-    "You review Python pull-request hunks for AI slop: code that is bloated, needlessly defensive, "
+    "You review pull-request hunks (any programming language) for AI slop: code that is bloated, needlessly defensive, "
     "or filler. Flag only clear problems on added lines (marked '+'). Ignore style that a linter "
     "would catch and never comment on correct, idiomatic code.\n\nCategories:\n"
     + "\n".join(f"- {k}: {v}" for k, v in CATEGORIES.items())
@@ -20,7 +21,9 @@ SYSTEM_PROMPT = (
 
 
 def user_message(hunk: Hunk) -> str:
-    return f"File: {hunk.path}\n```diff\n{hunk.render()}\n```"
+    lang = language_of(hunk.path)
+    head = f"File: {hunk.path}" + (f"\nLanguage: {lang}" if lang else "")
+    return f"{head}\n```diff\n{hunk.render()}\n```"
 
 
 def build_messages(hunk: Hunk, findings: list[Finding] | None = None) -> list[dict]:

@@ -13,7 +13,7 @@ import json
 import os
 import sys
 
-from .diff import parse_diff, python_hunks
+from .diff import code_hunks, parse_diff
 from .infer import ReviewConfig, findings_json, make_backend, review_hunks
 from .schema import SEVERITIES, severity_at_least
 
@@ -37,7 +37,7 @@ def _backend(a):
 
 def cmd_review(a) -> int:
     text = sys.stdin.read() if a.diff == "-" else open(a.diff, encoding="utf-8").read()
-    hunks = python_hunks(parse_diff(text), skip_tests=not a.include_tests)
+    hunks = code_hunks(parse_diff(text), skip_tests=not a.include_tests)
     findings = review_hunks(hunks, _backend(a), ReviewConfig(a.min_severity, a.max_findings, not a.no_rules))
     if a.format == "json":
         print(findings_json(findings))
@@ -46,7 +46,7 @@ def cmd_review(a) -> int:
             print(f"{f.path}:{f.span[0]}-{f.span[1]}  [{f.severity}] {f.category} ({f.source})\n    {f.reason}")
             if f.fix is not None:
                 print("    fix: " + (f.fix.replace("\n", "\n         ") or "<delete lines>"))
-        print(f"\n{len(findings)} finding(s) in {len(hunks)} Python hunk(s).")
+        print(f"\n{len(findings)} finding(s) in {len(hunks)} hunk(s).")
     return 1 if a.fail_on and any(severity_at_least(f.severity, a.fail_on) for f in findings) else 0
 
 
@@ -60,7 +60,7 @@ def cmd_github(a) -> int:
         return 0
     token = os.environ.get("TIDYPR_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
     gh = GitHub(os.environ["GITHUB_REPOSITORY"], token)
-    hunks = python_hunks(parse_diff(gh.pr_diff(pr["number"])), skip_tests=not a.include_tests)
+    hunks = code_hunks(parse_diff(gh.pr_diff(pr["number"])), skip_tests=not a.include_tests)
     findings = review_hunks(hunks, _backend(a), ReviewConfig(a.min_severity, a.max_findings, not a.no_rules))
 
     code_of = {(h.path, n): t for h in hunks for n, _, t in h.lines}

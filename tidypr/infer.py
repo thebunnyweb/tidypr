@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from .diff import Hunk, parse_diff, python_hunks
+from .diff import Hunk, code_hunks, parse_diff
 from .prompt import build_messages
 from .rules import check_hunk
 from .schema import OUTPUT_SCHEMA, Finding, parse_model_output, severity_at_least
@@ -78,7 +78,7 @@ def review_hunks(hunks: list[Hunk], backend: Backend | None, cfg: ReviewConfig =
     findings: list[Finding] = []
     for big in hunks:
         for hunk in big.split(MAX_HUNK_LINES):
-            if cfg.use_rules:
+            if cfg.use_rules and hunk.path.endswith(".py"):  # rules are Python-only
                 findings += check_hunk(hunk)
             if backend is not None:
                 text = backend.generate(build_messages(hunk))
@@ -90,7 +90,7 @@ def review_hunks(hunks: list[Hunk], backend: Backend | None, cfg: ReviewConfig =
 
 
 def review_diff(diff_text: str, backend: Backend | None, cfg: ReviewConfig = ReviewConfig()) -> list[Finding]:
-    return review_hunks(python_hunks(parse_diff(diff_text)), backend, cfg)
+    return review_hunks(code_hunks(parse_diff(diff_text)), backend, cfg)
 
 
 def dedupe(findings: list[Finding]) -> list[Finding]:

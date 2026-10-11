@@ -93,7 +93,7 @@ def summary_body(findings: list[Finding], added_lines: int, model: str | None) -
     else:
         sev = Counter(f.severity for f in findings)
         parts = ", ".join(f"{sev[s]} {s}" for s in ("high", "medium", "low") if sev[s])
-        head = f"**tidypr: {len(findings)} finding(s)** ({parts}) on {added_lines} added Python lines."
+        head = f"**tidypr: {len(findings)} finding(s)** ({parts}) on {added_lines} added lines."
     rows = "\n".join(f"| {f.severity} | {f.category} | `{f.path}:{f.line}` | {f.reason.splitlines()[0][:120]} |"
                      for f in findings)
     table = f"\n\n| Severity | Category | Where | Why |\n|---|---|---|---|\n{rows}" if findings else ""

@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tidypr.diff import parse_diff, python_hunks  # noqa: E402
+from tidypr.diff import code_hunks, parse_diff  # noqa: E402
 from tidypr.prompt import build_messages  # noqa: E402
 from tidypr.rules import check_hunk  # noqa: E402
 from tidypr.schema import Finding  # noqa: E402
@@ -57,7 +57,7 @@ def main() -> None:
     seen = set()
     if out.exists():
         seen = {json.loads(l).get("id") for l in out.open(encoding="utf-8")}
-    hunks = [s for h in python_hunks(parse_diff(Path(a.diff).read_text(errors="replace")),
+    hunks = [s for h in code_hunks(parse_diff(Path(a.diff).read_text(errors="replace")),
                                      skip_tests=not a.include_tests)
              for s in h.split(a.max_lines)]
     todo = []
@@ -65,7 +65,7 @@ def main() -> None:
         hid = hashlib.sha1((h.path + h.render()).encode()).hexdigest()[:16]
         if hid not in seen:
             todo.append((hid, h))
-    print(f"{len(hunks)} Python hunks, {len(todo)} not labelled yet → {out}\n")
+    print(f"{len(hunks)} code hunks, {len(todo)} not labelled yet → {out}\n")
 
     done = 0
     with out.open("a", encoding="utf-8") as fh:
