@@ -1,4 +1,4 @@
-"""slop-check: a small fine-tuned model that flags AI slop in Python PR diffs."""
+"""tidypr: a small fine-tuned model that flags AI slop in Python PR diffs."""
 from .diff import Hunk, parse_diff
 from .infer import ReviewConfig, make_backend, review_diff
 from .schema import CATEGORIES, Finding

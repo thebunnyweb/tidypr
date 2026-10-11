@@ -1,6 +1,6 @@
-# Dogfood: run slop-check on this repo's own PRs. Copy this file into any repo
-# and change `uses: ./` to `uses: thebunnyweb/slop-check@v0`.
-name: slop-check
+# Dogfood: run tidypr on this repo's own PRs. Copy this file into any repo
+# and change `uses: ./` to `uses: thebunnyweb/tidypr@v0`.
+name: tidypr
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -16,6 +16,6 @@ jobs:
       - uses: actions/checkout@v4   # only needed for `uses: ./`; the diff comes from the API
       - uses: ./
         with:
-          model: ""                 # set to your HF repo once trained, e.g. you/slop-check-1.5b-gguf
+          model: ""                 # set to your HF repo once trained, e.g. you/tidypr-1.5b-gguf
           post_mode: summary-only   # switch to `review` once you trust it
           fail_on: ""               # e.g. `high` to block merges

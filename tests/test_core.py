@@ -2,13 +2,13 @@ import json
 import random
 from pathlib import Path
 
-from slopcheck.diff import Hunk, parse_diff, python_hunks
-from slopcheck.github import comment_body, fingerprint, review_comments, summary_body
-from slopcheck.infer import Backend, ReviewConfig, review_diff, review_hunks
-from slopcheck.prompt import build_messages
-from slopcheck.rules import check_hunk
-from slopcheck.schema import Finding, parse_model_output
-from slopcheck.synth import extract_functions, slop_example
+from tidypr.diff import Hunk, parse_diff, python_hunks
+from tidypr.github import comment_body, fingerprint, review_comments, summary_body
+from tidypr.infer import Backend, ReviewConfig, review_diff, review_hunks
+from tidypr.prompt import build_messages
+from tidypr.rules import check_hunk
+from tidypr.schema import Finding, parse_model_output
+from tidypr.synth import extract_functions, slop_example
 
 SAMPLE = (Path(__file__).parents[1] / "data/seed/sample_pr.diff").read_text()
 
@@ -133,7 +133,7 @@ def test_review_comment_payload_and_dedupe():
 
 def test_summary_body():
     body = summary_body([Finding("a.py", 1, "log-noise", "low", "emoji")], 10, None)
-    assert body.startswith("<!-- slop-check:summary -->") and "1 low" in body and "rules only" in body
+    assert body.startswith("<!-- tidypr:summary -->") and "1 low" in body and "rules only" in body
 
 
 def test_emoji_fix_is_clean():
@@ -148,7 +148,7 @@ class FakeGH:
         self.calls, self.fail, self.existing = [], fail, existing_summary
 
     def request(self, method, path, body=None, accept=None):
-        from slopcheck.github import GitHubError
+        from tidypr.github import GitHubError
         self.calls.append((method, path))
         if self.fail and method == "POST":
             raise GitHubError(self.fail, "nope")
@@ -156,12 +156,12 @@ class FakeGH:
 
     def paginate(self, path, pages=5):
         if path.endswith("/comments") and "issues" in path and self.existing:
-            return [{"id": 7, "body": "<!-- slop-check:summary --> old"}]
+            return [{"id": 7, "body": "<!-- tidypr:summary --> old"}]
         return []
 
 
 def test_post_review_mode_updates_sticky_summary_and_posts_review():
-    from slopcheck.github import post
+    from tidypr.github import post
     gh = FakeGH(existing_summary=True)
     f = Finding("a.py", 3, "over-defensive", "high", "swallows", end_line=4)
     used = post(gh, 1, "sha", [f], {}, 10, mode="review", min_inline="medium", model=None)
@@ -170,7 +170,7 @@ def test_post_review_mode_updates_sticky_summary_and_posts_review():
 
 
 def test_post_falls_back_to_annotations_on_fork_pr(capsys):
-    from slopcheck.github import post
+    from tidypr.github import post
     gh = FakeGH(fail=403)
     f = Finding("a.py", 3, "over-defensive", "high", "swallows", end_line=4)
     assert post(gh, 1, "sha", [f], {}, 10, mode="review", min_inline="medium", model=None) == "annotations"

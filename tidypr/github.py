@@ -15,8 +15,8 @@ from collections import Counter
 from .schema import Finding, severity_at_least
 
 API = os.environ.get("GITHUB_API_URL", "https://api.github.com")
-SUMMARY_MARKER = "<!-- slop-check:summary -->"
-_FP = re.compile(r"<!-- slop-check:fp=([0-9a-f]+) -->")
+SUMMARY_MARKER = "<!-- tidypr:summary -->"
+_FP = re.compile(r"<!-- tidypr:fp=([0-9a-f]+) -->")
 
 
 class GitHubError(RuntimeError):
@@ -67,7 +67,7 @@ def comment_body(f: Finding, fp: str) -> str:
     body = f"**{f.severity} · {f.category}**\n\n{f.reason}"
     if f.fix is not None:
         body += f"\n\n```suggestion\n{f.fix}\n```"
-    return body + f"\n\n<sub>slop-check · {f.source}</sub>\n<!-- slop-check:fp={fp} -->"
+    return body + f"\n\n<sub>tidypr · {f.source}</sub>\n<!-- tidypr:fp={fp} -->"
 
 
 def review_comments(findings: list[Finding], code_of: dict[tuple[str, int], str],
@@ -89,11 +89,11 @@ def review_comments(findings: list[Finding], code_of: dict[tuple[str, int], str]
 
 def summary_body(findings: list[Finding], added_lines: int, model: str | None) -> str:
     if not findings:
-        head = "**Slop check: no findings.** ✔"
+        head = "**tidypr: no findings.** ✔"
     else:
         sev = Counter(f.severity for f in findings)
         parts = ", ".join(f"{sev[s]} {s}" for s in ("high", "medium", "low") if sev[s])
-        head = f"**Slop check: {len(findings)} finding(s)** ({parts}) on {added_lines} added Python lines."
+        head = f"**tidypr: {len(findings)} finding(s)** ({parts}) on {added_lines} added Python lines."
     rows = "\n".join(f"| {f.severity} | {f.category} | `{f.path}:{f.line}` | {f.reason.splitlines()[0][:120]} |"
                      for f in findings)
     table = f"\n\n| Severity | Category | Where | Why |\n|---|---|---|---|\n{rows}" if findings else ""
@@ -119,7 +119,7 @@ def annotate(findings: list[Finding]) -> None:
     for f in findings:
         msg = f"{f.reason}".replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
         print(f"::{level[f.severity]} file={f.path},line={f.span[0]},endLine={f.span[1]},"
-              f"title=slop-check {f.category}::{msg}")
+              f"title=tidypr {f.category}::{msg}")
 
 
 def post(gh: GitHub, number: int, head_sha: str, findings: list[Finding], code_of: dict,
@@ -135,13 +135,13 @@ def post(gh: GitHub, number: int, head_sha: str, findings: list[Finding], code_o
             if comments:
                 gh.request("POST", f"/pulls/{number}/reviews", {
                     "commit_id": head_sha, "event": "COMMENT",
-                    "body": f"slop-check left {len(comments)} inline comment(s). See the summary comment.",
+                    "body": f"tidypr left {len(comments)} inline comment(s). See the summary comment.",
                     "comments": comments,
                 })
         return mode
     except GitHubError as e:
         if e.status in (403, 404, 422):  # read-only token (fork PR), missing perms, bad line
-            print(f"::warning::slop-check could not post ({e.status}); falling back to annotations")
+            print(f"::warning::tidypr could not post ({e.status}); falling back to annotations")
             annotate(findings)
             return "annotations"
         raise

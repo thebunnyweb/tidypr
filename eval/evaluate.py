@@ -1,7 +1,7 @@
 """Score a backend against labelled examples (chat-format JSONL, same as training data).
 
   python eval/evaluate.py --data data/out/valid.jsonl                          # rules baseline
-  python eval/evaluate.py --data data/gold/gold.jsonl --backend llamacpp --model you/slop-check-1.5b-gguf
+  python eval/evaluate.py --data data/gold/gold.jsonl --backend llamacpp --model you/tidypr-1.5b-gguf
 
 A predicted finding matches a gold finding when the category is equal and the line spans overlap.
 Gates from docs/PLAN.md §6 are printed at the end.
@@ -17,9 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from slopcheck.diff import Hunk  # noqa: E402
-from slopcheck.infer import ReviewConfig, make_backend, review_hunks  # noqa: E402
-from slopcheck.schema import CATEGORIES, parse_model_output, severity_at_least  # noqa: E402
+from tidypr.diff import Hunk  # noqa: E402
+from tidypr.infer import ReviewConfig, make_backend, review_hunks  # noqa: E402
+from tidypr.schema import CATEGORIES, parse_model_output, severity_at_least  # noqa: E402
 
 _ROW = re.compile(r"^\s*(\d+) ([+ ]) (.*)$")
 

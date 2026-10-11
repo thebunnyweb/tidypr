@@ -5,7 +5,7 @@ Needs a llama.cpp checkout (for convert_hf_to_gguf.py) and the llama-quantize bi
   pip install -r ~/llama.cpp/requirements/requirements-convert_hf_to_gguf.txt
   brew install llama.cpp        # provides llama-quantize on macOS
 
-  python training/export_gguf.py --hf-dir runs/mlx/fused --out runs/mlx/slop-check-Q4_K_M.gguf
+  python training/export_gguf.py --hf-dir runs/mlx/fused --out runs/mlx/tidypr-Q4_K_M.gguf
 
 (The Unsloth path does this itself via save_pretrained_gguf.)
 """

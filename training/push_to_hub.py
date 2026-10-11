@@ -1,7 +1,7 @@
 """Upload a GGUF + model card to Hugging Face. Used by both training paths.
 
   export HF_TOKEN=hf_...            # write token from huggingface.co/settings/tokens
-  python training/push_to_hub.py --repo you/slop-check-1.5b-gguf --gguf runs/mlx/slop-check-Q4_K_M.gguf
+  python training/push_to_hub.py --repo you/tidypr-1.5b-gguf --gguf runs/mlx/tidypr-Q4_K_M.gguf
 """
 from __future__ import annotations
 
@@ -19,10 +19,10 @@ tags: [gguf, code-review, python, lora]
 Fine-tune of `{base}` that flags AI slop (over-defensive code, redundant comments, filler
 docstrings, emoji logs, placeholder TODOs…) in Python pull-request hunks and returns JSON findings.
 
-Built with [slop-check](https://github.com/thebunnyweb/slop-check). Use it in a PR:
+Built with [tidypr](https://github.com/thebunnyweb/tidypr). Use it in a PR:
 
 ```yaml
-- uses: thebunnyweb/slop-check@v0
+- uses: thebunnyweb/tidypr@v0
   with:
     model: {repo}
 ```
@@ -30,8 +30,8 @@ Built with [slop-check](https://github.com/thebunnyweb/slop-check). Use it in a 
 Locally:
 
 ```bash
-pip install "slop-check[infer]"
-git diff main... | slopcheck review --diff - --backend llamacpp --model {repo}
+pip install "tidypr[infer]"
+git diff main... | tidypr review --diff - --backend llamacpp --model {repo}
 ```
 
 **Status:** early. Trained mostly on synthetic injections; see the repo's eval report before trusting it.

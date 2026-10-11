@@ -32,7 +32,7 @@ def main() -> None:
          "--iters", str(a.iters), "--batch-size", str(a.batch), "--num-layers", str(a.num_layers),
          "--learning-rate", str(a.lr), "--max-seq-length", str(a.max_seq), "--mask-prompt",
          "--grad-checkpoint", "--steps-per-eval", "100", "--save-every", "200", "--adapter-path", adapters])
-    print(f"\nadapter → {adapters}\ntry it:  slopcheck review --diff data/seed/sample_pr.diff "
+    print(f"\nadapter → {adapters}\ntry it:  tidypr review --diff data/seed/sample_pr.diff "
           f"--backend mlx --model {a.base} --adapter {adapters}")
 
     if a.fuse:

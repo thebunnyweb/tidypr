@@ -1,4 +1,4 @@
-name: slop-check
+name: tidypr
 description: Flag AI slop in Python PR diffs with a small fine-tuned model that runs inside CI
 author: thebunnyweb
 branding: { icon: scissors, color: purple }
@@ -47,7 +47,7 @@ runs:
         path: |
           ~/.cache/huggingface
           ~/.cache/pip
-        key: slop-check-${{ runner.os }}-${{ inputs.model }}-${{ inputs.model_file }}
+        key: tidypr-${{ runner.os }}-${{ inputs.model }}-${{ inputs.model_file }}
 
     - name: Install
       shell: bash
@@ -67,7 +67,7 @@ runs:
       name: Review PR
       shell: bash
       env:
-        SLOP_TOKEN: ${{ inputs.token }}
+        TIDYPR_TOKEN: ${{ inputs.token }}
         MODEL: ${{ inputs.model }}
         MODEL_FILE: ${{ inputs.model_file }}
         POST_MODE: ${{ inputs.post_mode }}
@@ -80,4 +80,4 @@ runs:
               --max-findings "$MAX_FINDINGS" --model-file "$MODEL_FILE")
         if [ -n "$MODEL" ]; then args+=(--backend llamacpp --model "$MODEL"); else args+=(--backend rules); fi
         if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
-        slopcheck github "${args[@]}"
+        tidypr github "${args[@]}"

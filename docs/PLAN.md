@@ -1,8 +1,8 @@
-# Slop Check: plan v1.0
+# tidypr: plan v1.0
 
 A small fine-tuned model that reviews pull request diffs for "AI slop" (bloat, needless defensiveness, filler) and posts focused, low-noise comments from a GitHub Action. It runs entirely on the CI runner, costs nothing per PR, and code never leaves CI.
 
-> Working name: `slop-check` (rename freely). Lives in its own new repo, separate from `scrubr`.
+> Working name: `tidypr` (rename freely). Lives in its own new repo, separate from `scrubr`.
 
 ---
 
@@ -103,8 +103,8 @@ Pipeline: get the PR diff, run the rules pass, run the model on the changed Pyth
 
 Posting:
 - **One review** with inline comments using ` ```suggestion ` blocks (only medium and above by default)
-- **One sticky summary comment**, edited in place via a `<!-- slop-check:summary -->` marker
-- **One check run** `slop-check`, which fails on `fail_on` severity
+- **One sticky summary comment**, edited in place via a `<!-- tidypr:summary -->` marker
+- **One check run** `tidypr`, which fails on `fail_on` severity
 - A fingerprint per finding to avoid duplicates; threads auto-resolve when a finding disappears
 - PRs from forks: fall back to `::warning` annotations (read-only token)
 
@@ -115,7 +115,7 @@ Feedback loop: 👍/👎 reactions on bot comments are exported and become the n
 ## 8. Repo layout
 
 ```
-slop-check/
+tidypr/
 ├── rules/            # Phase 0 AST/regex detectors (zero-dep)
 ├── data/
 │   ├── fetch/        # AIDev, CommitPackFT, CodeReviewer downloaders + filters

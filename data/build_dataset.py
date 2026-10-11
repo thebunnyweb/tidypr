@@ -21,8 +21,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from slopcheck.prompt import build_messages  # noqa: E402
-from slopcheck.synth import clean_example, extract_functions, slop_example  # noqa: E402
+from tidypr.prompt import build_messages  # noqa: E402
+from tidypr.synth import clean_example, extract_functions, slop_example  # noqa: E402
 
 
 def iter_source_dir(root: str, seed: int = 0):
