@@ -45,7 +45,7 @@ def main() -> None:
 
     ds = load_dataset("json", data_files={"train": f"{a.data}/train.jsonl", "valid": f"{a.data}/valid.jsonl"})
     ds = ds.map(lambda b: {"text": [tokenizer.apply_chat_template(m, tokenize=False) for m in b["messages"]]},
-                batched=True, remove_columns=["messages"])
+                batched=True, remove_columns=ds["train"].column_names)  # keep only "text" (drops "meta")
 
     cfg = dict(
         dataset_text_field="text", packing=False,
