@@ -41,7 +41,7 @@ This takes clean functions and injects *known* slop, so labels and fixes are exa
 
 ## 2a. Train on a GPU with Unsloth (Kaggle, free)
 
-Open `training/kaggle_unsloth.ipynb` on Kaggle (GPU T4, Internet on, secret `HF_TOKEN`), set `HF_REPO`, and run all cells. Or on any CUDA machine:
+Follow the steps at the top of `training/kaggle_unsloth.ipynb`: zip this folder (with `data/out/`), upload it as a private Kaggle Dataset, import the notebook, pick **GPU T4 x1** (not P100), turn Internet on, add the `HF_TOKEN` secret, set `HF_REPO`, Run All. Or on any CUDA machine:
 
 ```bash
 pip install -e ".[train-unsloth]"

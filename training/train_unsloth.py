@@ -31,7 +31,7 @@ def main() -> None:
     a = ap.parse_args()
 
     # Unsloth must be imported before transformers/trl to apply its patches.
-    from unsloth import FastLanguageModel
+    from unsloth import FastLanguageModel, is_bfloat16_supported
     from unsloth.chat_templates import train_on_responses_only
     from datasets import load_dataset
     from trl import SFTConfig, SFTTrainer
@@ -53,6 +53,7 @@ def main() -> None:
         num_train_epochs=a.epochs, max_steps=a.max_steps, learning_rate=a.lr,
         lr_scheduler_type="cosine", warmup_ratio=0.03, weight_decay=0.01,
         logging_steps=10, eval_steps=100, save_steps=200, save_total_limit=2,
+        fp16=not is_bfloat16_supported(), bf16=is_bfloat16_supported(),  # T4 has no bf16
         optim="adamw_8bit", seed=13, output_dir=f"{a.out}/checkpoints", report_to="none",
     )
     # trl renamed a few fields across versions; set whichever this install understands.
