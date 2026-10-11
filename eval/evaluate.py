@@ -1,7 +1,7 @@
 """Score a backend against labelled examples (chat-format JSONL, same as training data).
 
   python eval/evaluate.py --data data/out/valid.jsonl                          # rules baseline
-  python eval/evaluate.py --data data/gold/gold.jsonl --backend llamacpp --model you/tidypr-1.5b-gguf
+  python eval/evaluate.py --data data/gold/gold.jsonl --backend llamacpp --model bunnyweb/tidypr-1.5b-gguf
 
 A predicted finding matches a gold finding when the category is equal and the line spans overlap.
 Gates from docs/PLAN.md §6 are printed at the end.

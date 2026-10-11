@@ -1,7 +1,7 @@
 """Upload a GGUF + model card to Hugging Face. Used by both training paths.
 
   export HF_TOKEN=hf_...            # write token from huggingface.co/settings/tokens
-  python training/push_to_hub.py --repo you/tidypr-1.5b-gguf --gguf runs/mlx/tidypr-Q4_K_M.gguf
+  python training/push_to_hub.py --repo bunnyweb/tidypr-1.5b-gguf --gguf runs/mlx/tidypr-Q4_K_M.gguf
 """
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 
   tidypr review --diff pr.diff                 # rules only
   git diff main... | tidypr review --diff -    # from stdin
-  tidypr review --diff pr.diff --backend llamacpp --model you/tidypr-1.5b-gguf
+  tidypr review --diff pr.diff --backend llamacpp --model bunnyweb/tidypr-1.5b-gguf
   tidypr review --diff pr.diff --backend mlx --model Qwen/Qwen2.5-Coder-0.5B-Instruct --adapter runs/mlx/adapters
   tidypr github                                # inside GitHub Actions
 """

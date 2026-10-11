@@ -46,7 +46,7 @@ Follow the steps at the top of `training/kaggle_unsloth.ipynb`: zip this folder 
 ```bash
 pip install -e ".[train-unsloth]"
 python training/train_unsloth.py --data data/out --out runs/unsloth --gguf q4_k_m \
-  --push you/tidypr-1.5b-gguf          # HF_TOKEN must be set
+  --push bunnyweb/tidypr-1.5b-gguf          # HF_TOKEN must be set
 python training/train_unsloth.py --max-steps 30   # 5-minute smoke test
 ```
 
@@ -69,7 +69,7 @@ python training/export_gguf.py --hf-dir runs/mlx/fused --out runs/mlx/tidypr-0.5
 
 ```bash
 export HF_TOKEN=hf_...      # write token: huggingface.co/settings/tokens
-python training/push_to_hub.py --repo you/tidypr-0.5b-gguf --gguf runs/mlx/tidypr-0.5b-Q4_K_M.gguf
+python training/push_to_hub.py --repo bunnyweb/tidypr-0.5b-gguf --gguf runs/mlx/tidypr-0.5b-Q4_K_M.gguf
 ```
 
 The Unsloth path does this itself when you pass `--push`. Both paths produce the same repo layout: one `.gguf` and a model card.
@@ -78,7 +78,7 @@ Test the hosted model from anywhere:
 
 ```bash
 pip install -e ".[infer]" --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-tidypr review --diff data/seed/sample_pr.diff --backend llamacpp --model you/tidypr-0.5b-gguf
+tidypr review --diff data/seed/sample_pr.diff --backend llamacpp --model bunnyweb/tidypr-1.5b-gguf
 ```
 
 ## 4. Use it on your PRs
@@ -95,7 +95,7 @@ jobs:
     steps:
       - uses: thebunnyweb/tidypr@main
         with:
-          model: you/tidypr-0.5b-gguf   # empty = rules only
+          model: bunnyweb/tidypr-1.5b-gguf   # empty = rules only
           post_mode: summary-only           # → `review` for inline suggestions once you trust it
           fail_on: ""                       # e.g. `high` to block merges
 ```
@@ -116,7 +116,7 @@ The summary comment is edited in place on every push. Inline comments carry a fi
 
 ```bash
 python eval/evaluate.py --data data/out/valid.jsonl                       # rules baseline
-python eval/evaluate.py --data data/out/valid.jsonl --backend llamacpp --model you/tidypr-0.5b-gguf --no-rules
+python eval/evaluate.py --data data/out/valid.jsonl --backend llamacpp --model bunnyweb/tidypr-1.5b-gguf --no-rules
 ```
 
 The validation set is synthetic, so the rules look better on it than they will on real code. The numbers that count come from the hand-labelled gold set (`data/gold/`, next milestone).

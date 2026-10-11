@@ -2,7 +2,7 @@
 
   pip install -e ".[train-unsloth]"
   python training/train_unsloth.py --data data/out --out runs/unsloth \
-      --gguf q4_k_m --push you/tidypr-1.5b-gguf     # push needs HF_TOKEN
+      --gguf q4_k_m --push bunnyweb/tidypr-1.5b-gguf     # push needs HF_TOKEN
 
 Outputs in --out: lora/ (adapter), and with --gguf a .gguf file ready for llama.cpp.
 """
