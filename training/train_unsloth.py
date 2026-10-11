@@ -79,8 +79,17 @@ def main() -> None:
         if a.push:
             # Same uploader as the MLX path, so both produce identical HF repos.
             from push_to_hub import push
-            gguf = next(Path(a.out).rglob("*.gguf"))
+            gguf = pick_gguf(a.out, a.gguf)
             push(a.push, gguf, base=a.base, token=os.environ.get("HF_TOKEN"))
+
+
+def pick_gguf(out: str, quant: str) -> Path:
+    """Unsloth also leaves a large F16 .gguf around; pick the one we asked for (e.g. Q4_K_M)."""
+    files = sorted(Path(out).rglob("*.gguf"))
+    wanted = [f for f in files if quant.upper() in f.name.upper()]
+    if not wanted:
+        raise SystemExit(f"no {quant} .gguf under {out}; found: {[f.name for f in files]}")
+    return wanted[0]
 
 
 if __name__ == "__main__":
