@@ -59,3 +59,31 @@ def test_language_aware_hunks_and_tests():
     assert [h.path for h in hunks] == ["src/a.ts"]
     assert "Language: TypeScript" in user_message(hunks[0])
     assert is_test("pkg/foo_test.go") and is_test("src/__tests__/x.js") and not is_test("src/testing_utils_x.py")
+
+
+def test_consistency_checks_reject_labels_that_dont_match_the_code():
+    from teacher import consistent
+    assert consistent("redundant-comment", "Comment restates the code.", ["    // Listen for changes"])
+    assert not consistent("dead-or-placeholder", "TODO stub.", ["    // Listen for changes"])
+    assert consistent("dead-or-placeholder", "TODO left behind.", ["  # TODO: implement"])
+    assert consistent("log-noise", "Leftover debug log.", ["      console.log(values);"])
+    assert not consistent("log-noise", "Emoji log.", ["    total += 1"])
+    assert not consistent("redundant-comment", "Comment restates.", ["    return x"])
+
+
+def test_merge_attaches_sibling_findings_to_overlapping_hunks(tmp_path):
+    from collect import _row
+    from merge import load_real_slop
+    base = "@@ -1,2 +1,6 @@\n func a() {\n+\t// Call the handler\n+\th()\n+\t// Delegate\n+\treturn d()"
+    h1 = hunk_from_diff_hunk("x.go", base.rsplit("\n", 2)[0])      # ends at line 3 (first comment)
+    h2 = hunk_from_diff_hunk("x.go", base)                          # ends at line 5 (second comment)
+    def lab(h, line):
+        r = _row("aidev", "o/r", "x.go", "Go", h, line, "remove this comment", pr="pr1")
+        r.update(label="slop", finding={"line": line, "end_line": line, "category": "redundant-comment",
+                                        "severity": "low", "reason": "Comment restates the code.", "fix": ""})
+        return r
+    p = tmp_path / "l.jsonl"
+    p.write_text("\n".join(json.dumps(lab(h, n)) for h, n in [(h1, 2), (h2, 4)]))
+    exs = sorted(load_real_slop([str(p)], max_cat_share=1.0), key=lambda e: len(e["hunk"].lines))
+    assert [f.line for f in exs[0]["findings"]] == [2]
+    assert [f.line for f in exs[1]["findings"]] == [2, 4]     # sibling's line 2 is labelled here too

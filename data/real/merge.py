@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "data"))
+sys.path.insert(0, str(ROOT / "data" / "real"))
 
 from build_dataset import _spec, iter_commitpackft, iter_source_dir  # noqa: E402
 from tidypr.diff import Hunk  # noqa: E402
@@ -36,27 +37,63 @@ def bucket(key: str) -> float:
     return int(hashlib.md5(key.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
 
 
-def load_real_slop(paths: list[str]) -> list[dict]:
-    """Group findings by identical hunk (several comments on one hunk → one example)."""
-    groups: dict[tuple, dict] = {}
+def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13) -> list[dict]:
+    """One example per distinct hunk. Findings from *sibling* comments (same PR + file) are attached to
+    every hunk that contains those exact lines, so a flagged line is never left unlabelled elsewhere."""
+    from teacher import consistent
+
+    rows = []
     for p in paths:
         for line in open(p, encoding="utf-8"):
             r = json.loads(line)
-            if r.get("label") != "slop" or not r.get("finding"):
-                continue
+            if r.get("label") == "slop" and r.get("finding"):
+                f = r["finding"]
+                texts = [t for n, k, t in r["hunk"] if f["line"] <= n <= f["end_line"]]
+                if consistent(f["category"], f["reason"], texts):   # re-check older labels too
+                    rows.append(r)
+
+    def finding_of(r):
+        f = r["finding"]
+        return Finding(r["path"], f["line"], f["category"], f["severity"], f["reason"],
+                       end_line=f["end_line"], fix=f.get("fix"), source="teacher")
+
+    by_file: dict[tuple, list] = defaultdict(list)
+    for r in rows:
+        by_file[(r["source"], r.get("pr") or r["id"], r["path"])].append(r)
+
+    examples: dict[tuple, dict] = {}
+    for sib in by_file.values():
+        for r in sib:
             key = (r["source"], r["repo"], r["path"], json.dumps(r["hunk"]))
-            g = groups.setdefault(key, {"repo": f"{r['source']}:{r['repo']}", "source": r["source"],
-                                        "hunk": Hunk(r["path"], [tuple(x) for x in r["hunk"]]),
-                                        "findings": [], "lang": r.get("lang")})
-            f = r["finding"]
-            new = Finding(r["path"], f["line"], f["category"], f["severity"], f["reason"],
-                          end_line=f["end_line"], fix=f.get("fix"), source="teacher")
-            if not any(x.category == new.category and x.line <= new.span[1] and new.line <= x.span[1]
-                       for x in g["findings"]):
-                g["findings"].append(new)
-    for g in groups.values():
-        g["findings"].sort(key=lambda f: f.line)
-    return list(groups.values())
+            if key in examples:
+                continue
+            hunk = Hunk(r["path"], [tuple(x) for x in r["hunk"]])
+            plus = {n: t for n, k, t in hunk.lines if k == "+"}
+            findings: list[Finding] = []
+            for o in sib:   # this row's finding + siblings whose exact lines are in this hunk
+                f, olines = o["finding"], {n: t for n, k, t in o["hunk"]}
+                span = range(f["line"], f["end_line"] + 1)
+                if all(n in plus and plus[n] == olines.get(n) for n in span):
+                    new = finding_of(o)
+                    if not any(x.category == new.category and x.line <= new.span[1] and new.line <= x.span[1]
+                               for x in findings):
+                        findings.append(new)
+            findings.sort(key=lambda f: f.line)
+            examples[key] = {"repo": f"{r['source']}:{r['repo']}", "source": r["source"], "hunk": hunk,
+                             "findings": findings, "lang": r.get("lang")}
+
+    # cap any single category's share so the model doesn't learn "every comment is slop"
+    out = list(examples.values())
+    random.Random(seed).shuffle(out)
+    cap = max(1, int(max_cat_share * len(out)))
+    kept, per_cat = [], Counter()
+    for ex in out:
+        main = ex["findings"][0].category
+        if per_cat[main] >= cap and len({f.category for f in ex["findings"]}) == 1:
+            continue
+        per_cat[main] += 1
+        kept.append(ex)
+    return kept
 
 
 def load_real_clean(paths: list[str], cap: int) -> list[dict]:
@@ -114,6 +151,7 @@ def main() -> None:
     ap.add_argument("--labeled", action="append", default=[])
     ap.add_argument("--clean", action="append", default=[])
     ap.add_argument("--clean-ratio", type=float, default=1.0, help="real clean examples per real slop example")
+    ap.add_argument("--max-cat-share", type=float, default=0.35, help="cap any one category's share of real slop")
     ap.add_argument("--synthetic", type=int, default=3000)
     ap.add_argument("--source", action="append", default=[])
     ap.add_argument("--commitpackft", default=None)
@@ -123,7 +161,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=13)
     a = ap.parse_args()
 
-    slop = load_real_slop(a.labeled)
+    slop = load_real_slop(a.labeled, a.max_cat_share, a.seed)
     clean = load_real_clean(a.clean, cap=int(len(slop) * a.clean_ratio) if slop else 10**9)
     synth = synthetic(a.source, a.commitpackft, a.synthetic, [float(x) for x in a.mix.split(",")], a.seed) \
         if (a.source or a.commitpackft) and a.synthetic else []

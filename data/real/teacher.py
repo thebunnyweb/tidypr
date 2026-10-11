@@ -26,6 +26,12 @@ and a comment a human reviewer left on it. Decide if the reviewer is pointing ou
 
 """ + "\n".join(f"- {k}: {v}" for k, v in CATEGORIES.items()) + """
 
+Tips:
+- A comment that narrates what the code does ("// Listen for changes", "# Loop over users") and the reviewer
+  asks to remove → redundant-comment (not dead-or-placeholder).
+- dead-or-placeholder = TODO/FIXME placeholders, commented-out code, unused functions/variables, leftover stubs.
+- Leftover debug output (console.log, print, fmt.Println) → log-noise.
+
 NOT slop (answer slop=false): bugs and logic errors, naming, formatting/style, performance, security,
 missing tests, questions, design debates, requests for MORE code/checks/comments, praise, unclear comments.
 
@@ -48,6 +54,11 @@ FEWSHOT = [
     ("File: src/api/user.ts\nLanguage: TypeScript\n```diff\n   12 +   const name = user.firstName + user.lastName;\n```\n"
      "Reviewer comment (on line 12): \"Should this have a space between first and last name?\"",
      '{"slop": false}'),
+    ("File: src/autoSave.ts\nLanguage: TypeScript\n```diff\n   14 +   constructor() {\n"
+     "   15 +     // Listen for text document changes to trigger auto-save\n```\n"
+     "Reviewer comment (on line 15): \"@copilot remove this comment\"",
+     '{"slop": true, "category": "redundant-comment", "severity": "low", "line": 15, "end_line": 15, '
+     '"reason": "Comment narrates what the constructor obviously does.", "fix": ""}'),
     ("File: lib/report.go\nLanguage: Go\n```diff\n   88 +\t// increment the counter\n   89 +\tcount++\n```\n"
      "Reviewer comment (on line 88): \"nit: this comment doesn't add anything\"",
      '{"slop": true, "category": "redundant-comment", "severity": "low", "line": 88, "end_line": 88, '
@@ -76,6 +87,29 @@ def teacher_messages(row: dict) -> list[dict]:
 
 
 _OBJ = re.compile(r"\{.*\}", re.S)
+
+# Language-agnostic sanity checks: the label must match what is actually on those lines.
+_COMMENT_LINE = re.compile(r"^\s*(#|//|/\*|\*|<!--|--|;|\"\"\"|\'\'\')|\s(#|//)\s")
+_LOG_CALL = re.compile(r"console\.(log|debug|info|warn|error)|\bprint(ln|f)?\s*\(|\blog(ger|ging)?\.\w+\(|"
+                       r"fmt\.Print|System\.(out|err)\.print|\bputs\b|\becho\b|\bdebug!?\(|NSLog|Log\.[dive]\(", re.I)
+_TODO = re.compile(r"\b(TODO|FIXME|XXX|HACK)\b", re.I)
+_DEFENSIVE = re.compile(r"\b(try|catch|except|rescue|finally|if|null|None|nil|err|undefined|isinstance|typeof|"
+                        r"Optional|guard|unless)\b|\?\?|\?\.|!= ?nil|is not None", re.I)
+
+
+def consistent(cat: str, reason: str, lines: list[str]) -> bool:
+    text = "\n".join(lines)
+    if "todo" in reason.lower() and not _TODO.search(text):
+        return False                      # reason talks about a TODO that isn't there
+    if cat == "redundant-comment":
+        return any(_COMMENT_LINE.search(l) for l in lines)
+    if cat == "log-noise":
+        return bool(_LOG_CALL.search(text))
+    if cat == "over-defensive":
+        return bool(_DEFENSIVE.search(text))
+    if cat == "verbose-docstring":
+        return any(_COMMENT_LINE.search(l) for l in lines)
+    return True
 _MENTIONS_REVIEWER = re.compile(r"\b(the )?(reviewer|commenter)\b|\bas (mentioned|noted)\b", re.I)
 
 
@@ -106,6 +140,9 @@ def parse_teacher(text: str, row: dict) -> tuple[str, dict | None]:
     if anchor and anchor in added and not (line - 3 <= anchor <= end + 3):
         return "invalid", None           # teacher pointed somewhere other than where the human commented
     if _MENTIONS_REVIEWER.search(reason):
+        return "invalid", None
+    span_text = [t for n, k, t in row["hunk"] if line <= n <= end]
+    if not consistent(cat, reason, span_text):
         return "invalid", None
     fix = d.get("fix")
     return "slop", {"line": line, "end_line": end, "category": cat, "severity": sev, "reason": reason,

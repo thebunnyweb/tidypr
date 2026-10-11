@@ -86,9 +86,9 @@ def _keep(path: str, comment: str, min_score: float) -> bool:
         and 15 <= len(comment) <= 1200 and slop_score(comment) >= min_score
 
 
-def _row(source, repo, path, lang, hunk: Hunk, anchor, comment) -> dict:
+def _row(source, repo, path, lang, hunk: Hunk, anchor, comment, pr: str | None = None) -> dict:
     hid = hashlib.sha1(f"{source}|{repo}|{path}|{hunk.render()}|{comment}".encode()).hexdigest()[:16]
-    return {"id": hid, "source": source, "repo": repo, "path": path, "lang": lang,
+    return {"id": hid, "source": source, "repo": repo, "pr": pr, "path": path, "lang": lang,
             "hunk": [list(x) for x in hunk.lines], "anchor": anchor, "comment": comment.strip(),
             "score": slop_score(comment)}
 
@@ -110,7 +110,8 @@ def iter_aidev(min_score: float, max_hunk_lines: int = 80):
         if not hunk or len(hunk.lines) > max_hunk_lines:
             continue
         m = re.search(r"/repos/([^/]+/[^/]+)/pulls/", str(r.pull_request_url))
-        yield _row("aidev", m.group(1) if m else "?", path, language_of(path), hunk, hunk.lines[-1][0], body)
+        yield _row("aidev", m.group(1) if m else "?", path, language_of(path), hunk, hunk.lines[-1][0], body,
+                   pr=str(r.pull_request_url))
 
 
 # ---- CodeReviewer -------------------------------------------------------------------------------------
