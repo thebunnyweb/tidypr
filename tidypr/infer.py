@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from .checks import consistent
 from .diff import Hunk, code_hunks, parse_diff
 from .prompt import build_messages
 from .rules import check_hunk
@@ -67,11 +68,18 @@ def make_backend(name: str, model: str | None = None, **kw) -> Backend | None:
     raise ValueError(f"unknown backend: {name}")
 
 
+# Categories a hunk-only model can judge reliably. needless-abstraction / hallucinated-api need context
+# the model doesn't see; enable them explicitly once the test split says they're trustworthy.
+DEFAULT_CATEGORIES = frozenset({"over-defensive", "redundant-comment", "verbose-docstring",
+                                "dead-or-placeholder", "log-noise"})
+
+
 @dataclass
 class ReviewConfig:
     min_severity: str = "low"
     max_findings: int = 10
     use_rules: bool = True
+    categories: frozenset[str] = DEFAULT_CATEGORIES
 
 
 def review_hunks(hunks: list[Hunk], backend: Backend | None, cfg: ReviewConfig = ReviewConfig()) -> list[Finding]:
@@ -82,9 +90,12 @@ def review_hunks(hunks: list[Hunk], backend: Backend | None, cfg: ReviewConfig =
                 findings += check_hunk(hunk)
             if backend is not None:
                 text = backend.generate(build_messages(hunk))
-                findings += parse_model_output(text, hunk.path, valid_lines=hunk.added_lines)
+                code = {n: t for n, _, t in hunk.lines}
+                for f in parse_model_output(text, hunk.path, valid_lines=hunk.added_lines):
+                    if consistent(f.category, f.reason, [code[n] for n in range(f.span[0], f.span[1] + 1) if n in code]):
+                        findings.append(f)   # drop model findings that don't match the code
     findings = dedupe(findings)
-    findings = [f for f in findings if severity_at_least(f.severity, cfg.min_severity)]
+    findings = [f for f in findings if severity_at_least(f.severity, cfg.min_severity) and f.category in cfg.categories]
     findings.sort(key=lambda f: (-["low", "medium", "high"].index(f.severity), f.path, f.line))
     return findings[: cfg.max_findings]
 

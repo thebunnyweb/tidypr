@@ -22,6 +22,9 @@ inputs:
   fail_on:
     description: Fail the job when a finding at or above this severity exists (empty = never fail)
     default: ""
+  categories:
+    description: Comma-separated categories to report, "default" (the reliable ones) or "all"
+    default: default
   max_findings:
     description: Hard cap on findings per PR
     default: "10"
@@ -75,9 +78,10 @@ runs:
         MIN_INLINE: ${{ inputs.min_inline }}
         MAX_FINDINGS: ${{ inputs.max_findings }}
         FAIL_ON: ${{ inputs.fail_on }}
+        CATEGORIES: ${{ inputs.categories }}
       run: |
         args=(--post-mode "$POST_MODE" --min-severity "$MIN_SEVERITY" --min-inline "$MIN_INLINE"
-              --max-findings "$MAX_FINDINGS" --model-file "$MODEL_FILE")
+              --max-findings "$MAX_FINDINGS" --model-file "$MODEL_FILE" --categories "$CATEGORIES")
         if [ -n "$MODEL" ]; then args+=(--backend llamacpp --model "$MODEL"); else args+=(--backend rules); fi
         if [ -n "$FAIL_ON" ]; then args+=(--fail-on "$FAIL_ON"); fi
         tidypr github "${args[@]}"

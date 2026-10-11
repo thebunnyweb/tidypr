@@ -14,7 +14,8 @@ import os
 import sys
 
 from .diff import code_hunks, parse_diff
-from .infer import ReviewConfig, findings_json, make_backend, review_hunks
+from .infer import DEFAULT_CATEGORIES, ReviewConfig, findings_json, make_backend, review_hunks
+from .schema import CATEGORIES
 from .schema import SEVERITIES, severity_at_least
 
 
@@ -29,6 +30,14 @@ def _add_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--min-severity", choices=SEVERITIES, default="low")
     p.add_argument("--max-findings", type=int, default=10)
     p.add_argument("--include-tests", action="store_true", help="also review tests/ and test_*.py files")
+    p.add_argument("--categories", default="default",
+                   help="comma-separated categories to report, 'default' (reliable ones) or 'all'")
+
+
+def _cfg(a) -> ReviewConfig:
+    cats = {"default": DEFAULT_CATEGORIES, "all": frozenset(CATEGORIES)}.get(
+        a.categories, frozenset(c.strip() for c in a.categories.split(",") if c.strip()))
+    return ReviewConfig(a.min_severity, a.max_findings, not a.no_rules, cats)
 
 
 def _backend(a):
@@ -38,7 +47,7 @@ def _backend(a):
 def cmd_review(a) -> int:
     text = sys.stdin.read() if a.diff == "-" else open(a.diff, encoding="utf-8").read()
     hunks = code_hunks(parse_diff(text), skip_tests=not a.include_tests)
-    findings = review_hunks(hunks, _backend(a), ReviewConfig(a.min_severity, a.max_findings, not a.no_rules))
+    findings = review_hunks(hunks, _backend(a), _cfg(a))
     if a.format == "json":
         print(findings_json(findings))
     else:
@@ -61,7 +70,7 @@ def cmd_github(a) -> int:
     token = os.environ.get("TIDYPR_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
     gh = GitHub(os.environ["GITHUB_REPOSITORY"], token)
     hunks = code_hunks(parse_diff(gh.pr_diff(pr["number"])), skip_tests=not a.include_tests)
-    findings = review_hunks(hunks, _backend(a), ReviewConfig(a.min_severity, a.max_findings, not a.no_rules))
+    findings = review_hunks(hunks, _backend(a), _cfg(a))
 
     code_of = {(h.path, n): t for h in hunks for n, _, t in h.lines}
     added = sum(len(h.added_lines) for h in hunks)

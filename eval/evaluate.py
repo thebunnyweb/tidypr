@@ -47,7 +47,8 @@ def main() -> None:
     a = ap.parse_args()
 
     backend = make_backend(a.backend, a.model, filename=a.model_file, adapter_path=a.adapter)
-    cfg = ReviewConfig(min_severity="low", max_findings=50, use_rules=not a.no_rules)
+    cfg = ReviewConfig(min_severity="low", max_findings=50, use_rules=not a.no_rules,
+                       categories=frozenset(CATEGORIES))  # score every category, gating is a product choice
     tp, fp, fn = defaultdict(int), defaultdict(int), defaultdict(int)
     clean_total = clean_flagged = n = 0
 

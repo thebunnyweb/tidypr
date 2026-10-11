@@ -237,3 +237,14 @@ def test_slop_findings_only_on_added_lines_with_context_around():
         for f in findings:
             assert all(kinds[n] == "+" for n in range(f.line, f.end_line + 1))
     assert shapes == {True, False}   # both partial edits and whole new functions occur
+
+
+def test_model_findings_that_do_not_match_the_code_are_dropped():
+    h = hunk("def f(x):", "    total = x + 1", "    # add one", "    return total")
+    reply = json.dumps({"findings": [
+        {"line": 2, "end_line": 2, "category": "log-noise", "severity": "low", "reason": "emoji log"},          # no log call
+        {"line": 3, "end_line": 3, "category": "redundant-comment", "severity": "low", "reason": "restates"},  # ok
+        {"line": 4, "end_line": 4, "category": "hallucinated-api", "severity": "high", "reason": "no such"},   # off by default
+    ]})
+    out = review_hunks([h], FakeBackend(reply), ReviewConfig(use_rules=False))
+    assert [(f.line, f.category) for f in out] == [(3, "redundant-comment")]
