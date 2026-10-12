@@ -23,7 +23,7 @@ def _add_model_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--backend", choices=["rules", "llamacpp", "mlx"], default=os.environ.get("TIDYPR_BACKEND", "rules"))
     p.add_argument("--model", default=os.environ.get("TIDYPR_MODEL") or None,
                    help="HF repo id, local .gguf, or local MLX dir")
-    p.add_argument("--model-file", default=os.environ.get("TIDYPR_MODEL_FILE", "*Q4_K_M.gguf"),
+    p.add_argument("--model-file", default=os.environ.get("TIDYPR_MODEL_FILE", "*Q8_0.gguf"),
                    help="GGUF filename/glob inside the HF repo (llamacpp)")
     p.add_argument("--adapter", default=None, help="LoRA adapter dir (mlx)")
     p.add_argument("--no-rules", action="store_true")

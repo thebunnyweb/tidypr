@@ -2,7 +2,7 @@
 
   pip install -e ".[train-unsloth]"
   python training/train_unsloth.py --data data/out --out runs/unsloth \
-      --gguf q4_k_m --push bunnyweb/tidypr-1.5b-gguf     # push needs HF_TOKEN
+      --gguf q8_0 --push bunnyweb/tidypr-1.5b-gguf     # push needs HF_TOKEN
 
 Outputs in --out: lora/ (adapter), and with --gguf a .gguf file ready for llama.cpp.
 """
@@ -84,7 +84,7 @@ def main() -> None:
 
 
 def pick_gguf(out: str, quant: str) -> Path:
-    """Unsloth also leaves a large F16 .gguf around; pick the one we asked for (e.g. Q4_K_M)."""
+    """Unsloth also leaves a large F16 .gguf around; pick the one we asked for (e.g. Q8_0)."""
     files = sorted(Path(out).rglob("*.gguf"))
     wanted = [f for f in files if quant.upper() in f.name.upper()]
     if not wanted:

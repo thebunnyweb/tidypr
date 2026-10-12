@@ -9,7 +9,7 @@ inputs:
     default: ""
   model_file:
     description: GGUF filename or glob inside the repo
-    default: "*Q4_K_M.gguf"
+    default: "*Q8_0.gguf"
   post_mode:
     description: summary-only | review | annotations
     default: summary-only

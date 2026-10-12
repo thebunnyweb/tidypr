@@ -32,7 +32,11 @@ def hunk_from_user(content: str) -> Hunk:
 
 
 def overlap(a, b) -> bool:
-    return a.category == b.category and a.span[0] <= b.span[1] and b.span[0] <= a.span[1]
+    return a.category == b.category and spans_overlap(a, b)
+
+
+def spans_overlap(a, b) -> bool:
+    return a.span[0] <= b.span[1] and b.span[0] <= a.span[1]
 
 
 def main() -> None:
@@ -40,10 +44,11 @@ def main() -> None:
     ap.add_argument("--data", required=True)
     ap.add_argument("--backend", default="rules", choices=["rules", "llamacpp", "mlx"])
     ap.add_argument("--model")
-    ap.add_argument("--model-file", default="*Q4_K_M.gguf")
+    ap.add_argument("--model-file", default="*Q8_0.gguf")
     ap.add_argument("--adapter")
     ap.add_argument("--no-rules", action="store_true", help="score the model alone")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--dump", help="write gold vs predicted findings per example to this JSONL file")
     a = ap.parse_args()
 
     backend = make_backend(a.backend, a.model, filename=a.model_file, adapter_path=a.adapter)
@@ -51,6 +56,8 @@ def main() -> None:
                        categories=frozenset(CATEGORIES))  # score every category, gating is a product choice
     tp, fp, fn = defaultdict(int), defaultdict(int), defaultdict(int)
     clean_total = clean_flagged = n = 0
+    loc_tp = loc_pred = loc_gold_hit = loc_gold = 0   # "right lines, any category"
+    dump = open(a.dump, "w", encoding="utf-8") if a.dump else None
 
     for line in open(a.data, encoding="utf-8"):
         if a.limit and n >= a.limit:
@@ -74,6 +81,15 @@ def main() -> None:
         for i, g in enumerate(gold):
             if i not in matched:
                 fn[g.category] += 1
+        loc_pred += len(pred)
+        loc_tp += sum(any(spans_overlap(p, g) for g in gold) for p in pred)
+        loc_gold += len(gold)
+        loc_gold_hit += sum(any(spans_overlap(p, g) for p in pred) for g in gold)
+        if dump:
+            row = lambda f: {"line": f.line, "end_line": f.span[1], "category": f.category,
+                             "severity": f.severity, "reason": f.reason}
+            dump.write(json.dumps({"path": hunk.path, "gold": [row(g) for g in gold],
+                                   "pred": [row(p) for p in pred]}, ensure_ascii=False) + "\n")
 
     print(f"{'category':<22}{'P':>7}{'R':>7}{'F1':>7}   tp/fp/fn")
     f1s = []
@@ -89,6 +105,12 @@ def main() -> None:
     T, F = sum(tp.values()), sum(fp.values())
     print(f"\nexamples: {n}   overall precision: {T / (T + F) if T + F else 0:.2f}   "
           f"macro-F1: {sum(f1s) / len(f1s) if f1s else 0:.2f}")
+    print(f"location only (right lines, any category): precision {loc_tp / loc_pred if loc_pred else 0:.2f}   "
+          f"recall {loc_gold_hit / loc_gold if loc_gold else 0:.2f}   ({loc_tp}/{loc_pred} predicted, "
+          f"{loc_gold_hit}/{loc_gold} gold)")
+    if dump:
+        dump.close()
+        print(f"predictions written to {a.dump}")
     fpr = clean_flagged / clean_total if clean_total else 0
     print(f"clean hunks flagged medium+: {clean_flagged}/{clean_total} = {fpr:.1%}  (gate ≤ 5%)")
 

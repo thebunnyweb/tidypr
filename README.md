@@ -65,7 +65,7 @@ Follow the steps at the top of `training/kaggle_unsloth.ipynb`: zip your dataset
 
 ```bash
 pip install -e ".[train-unsloth]"
-python training/train_unsloth.py --data data/v2 --out runs/unsloth --gguf q4_k_m \
+python training/train_unsloth.py --data data/v2 --out runs/unsloth --gguf q8_0 \
   --push bunnyweb/tidypr-1.5b-gguf          # HF_TOKEN must be set
 python training/train_unsloth.py --max-steps 30   # 5-minute smoke test
 ```
@@ -123,7 +123,7 @@ jobs:
 | Input | Default | Meaning |
 |---|---|---|
 | `model` | `""` | HF repo with the GGUF (cached between runs) |
-| `model_file` | `*Q4_K_M.gguf` | file/glob inside the repo |
+| `model_file` | `*Q8_0.gguf` | file/glob inside the repo (Q8_0 keeps recall; Q4_K_M lost about 40% of findings in testing) |
 | `post_mode` | `summary-only` | `summary-only`, `review` (inline + suggestion buttons), or `annotations` |
 | `min_severity` | `low` | drop anything below this |
 | `min_inline` | `medium` | lowest severity that gets an inline comment |

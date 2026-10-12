@@ -26,7 +26,7 @@ class Backend:
 
 
 class LlamaCppBackend(Backend):
-    def __init__(self, model: str, filename: str = "*Q4_K_M.gguf", n_ctx: int = 4096, threads: int | None = None):
+    def __init__(self, model: str, filename: str = "*Q8_0.gguf", n_ctx: int = 4096, threads: int | None = None):
         from llama_cpp import Llama
 
         kw = dict(n_ctx=n_ctx, n_threads=threads, verbose=False)
