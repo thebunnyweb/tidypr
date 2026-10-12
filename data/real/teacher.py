@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from tidypr.checks import consistent  # noqa: E402,F401  (re-exported for merge.py)
+from tidypr.checks import consistent, reconcile  # noqa: E402,F401  (re-exported for merge.py)
 from tidypr.diff import Hunk  # noqa: E402
 from tidypr.schema import CATEGORIES, SEVERITIES  # noqa: E402
 
@@ -136,6 +136,10 @@ def parse_teacher_explain(text: str, row: dict) -> tuple[str, dict | None, str]:
         reason = reason[:297].rsplit(" ", 1)[0] + "..."
     if _MENTIONS_REVIEWER.search(reason):
         return "invalid", None, "mentions-reviewer"
+    fixed = reconcile(cat, reason)
+    if fixed is None:
+        return "invalid", None, "category-contradicts-reason"
+    cat = fixed
     added = sorted(n for n, k, _ in row["hunk"] if k == "+")
     if not added:
         return "invalid", None, "no-added-lines"

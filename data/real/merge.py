@@ -44,17 +44,27 @@ def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13
                    gated_share: float = 0.10) -> list[dict]:
     """One example per distinct hunk. Findings from *sibling* comments (same PR + file) are attached to
     every hunk that contains those exact lines, so a flagged line is never left unlabelled elsewhere."""
-    from teacher import consistent
+    from teacher import consistent, reconcile
 
-    rows = []
+    rows, recat = [], Counter()
     for p in paths:
         for line in open(p, encoding="utf-8"):
             r = json.loads(line)
             if r.get("label") == "slop" and r.get("finding"):
                 f = r["finding"]
+                cat = reconcile(f["category"], f["reason"])   # older labels predate this check
+                if cat is None:
+                    recat["dropped"] += 1
+                    continue
+                if cat != f["category"]:
+                    recat[f"{f['category']} -> {cat}"] += 1
+                    f = r["finding"] = {**f, "category": cat}
                 texts = [t for n, k, t in r["hunk"] if f["line"] <= n <= f["end_line"]]
                 if consistent(f["category"], f["reason"], texts):   # re-check older labels too
                     rows.append(r)
+
+    if recat:
+        print(f"real slop: category fixes {dict(recat.most_common())}", file=sys.stderr)
 
     def finding_of(r):
         f = r["finding"]

@@ -99,3 +99,17 @@ def test_parse_teacher_repairs_and_explains():
     label, f, _ = parse_teacher_explain(alias, row())
     assert label == "slop" and f["category"] == "dead-or-placeholder" and f["severity"] == "medium"
     assert parse_teacher_explain("nope", row())[2] == "no-json"
+
+
+def test_reconcile_fixes_category_from_reason():
+    from tidypr.checks import reconcile
+    assert reconcile("needless-abstraction", "Import is unused.") == "dead-or-placeholder"
+    assert reconcile("needless-abstraction", "Unused variable and constant.") == "dead-or-placeholder"
+    assert reconcile("redundant-comment", "Second condition is redundant due to the first.") == "over-defensive"
+    assert reconcile("redundant-comment", "Comment restates the next line.") == "redundant-comment"
+    assert reconcile("redundant-comment", "Comment mentions an unused flag.") == "redundant-comment"
+    assert reconcile("verbose-docstring", "Docstring is too short and lacks detail.") is None
+    assert reconcile("verbose-docstring", "Docstring is overly verbose.") == "verbose-docstring"
+    assert reconcile("dead-or-placeholder", "Change appears to be a leftover from another commit.") is None
+    assert reconcile("log-noise", "Unused debug print.") == "log-noise"
+    assert reconcile("over-defensive", "Catch-all swallows errors.") == "over-defensive"

@@ -8,9 +8,9 @@ Backends:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from .checks import consistent
+from .checks import consistent, reconcile
 from .diff import Hunk, code_hunks, parse_diff
 from .prompt import build_messages
 from .rules import check_hunk
@@ -92,6 +92,10 @@ def review_hunks(hunks: list[Hunk], backend: Backend | None, cfg: ReviewConfig =
                 text = backend.generate(build_messages(hunk))
                 code = {n: t for n, _, t in hunk.lines}
                 for f in parse_model_output(text, hunk.path, valid_lines=hunk.added_lines):
+                    cat = reconcile(f.category, f.reason)   # the reason often names the right category
+                    if cat is None:
+                        continue
+                    f = replace(f, category=cat)
                     if consistent(f.category, f.reason, [code[n] for n in range(f.span[0], f.span[1] + 1) if n in code]):
                         findings.append(f)   # drop model findings that don't match the code
     findings = dedupe(findings)
