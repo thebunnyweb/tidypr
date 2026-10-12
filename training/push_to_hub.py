@@ -34,7 +34,22 @@ pip install "tidypr[infer]"
 git diff main... | tidypr review --diff - --backend llamacpp --model {repo}
 ```
 
-**Status:** early. Trained mostly on synthetic injections; see the repo's eval report before trusting it.
+## Training data
+
+LoRA fine-tune (Unsloth, QLoRA) on a mix of:
+- inline review comments from humans on AI-agent pull requests ([AIDev](https://huggingface.co/datasets/hao-li/AIDev)),
+  and review comments from [CodeReviewer](https://huggingface.co/datasets/fasterinnerlooper/codereviewer),
+  turned into labels by a Qwen2.5-Coder-7B teacher
+- hunks reviewers accepted without comment (CodeReviewer)
+- synthetic slop injected into human-written Python (CPython standard library)
+
+## License
+
+Weights: Apache-2.0, same as the base model `{base}`. Code: MIT ([tidypr](https://github.com/thebunnyweb/tidypr)).
+The training data contains third-party code under its original licenses and is not redistributed.
+
+**Status:** early. Check the repo's eval report before trusting it; categories that miss the precision bar
+are off by default.
 """
 
 
