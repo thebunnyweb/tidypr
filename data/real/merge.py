@@ -69,8 +69,8 @@ def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13
                 continue
             hunk = Hunk(r["path"], [tuple(x) for x in r["hunk"]])
             plus = {n: t for n, k, t in hunk.lines if k == "+"}
-            findings: list[Finding] = []
-            for o in sib:   # this row's finding + siblings whose exact lines are in this hunk
+            findings: list[Finding] = [finding_of(r)]   # this row's own finding, always
+            for o in sib:   # + siblings whose exact lines are in this hunk
                 f, olines = o["finding"], {n: t for n, k, t in o["hunk"]}
                 span = range(f["line"], f["end_line"] + 1)
                 if all(n in plus and plus[n] == olines.get(n) for n in span):
@@ -83,7 +83,8 @@ def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13
                              "findings": findings, "lang": r.get("lang")}
 
     # cap any single category's share so the model doesn't learn "every comment is slop"
-    out = list(examples.values())
+    out = [e for e in examples.values() if e["findings"]]
+    print(f"real slop: {len(rows)} labelled rows -> {len(out)} distinct hunks", file=sys.stderr)
     random.Random(seed).shuffle(out)
     cap = max(1, int(max_cat_share * len(out)))
     kept, per_cat = [], Counter()
@@ -93,6 +94,7 @@ def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13
             continue
         per_cat[main] += 1
         kept.append(ex)
+    print(f"real slop: {len(kept)} after the {max_cat_share:.0%} per-category cap {dict(per_cat)}", file=sys.stderr)
     return kept
 
 
@@ -152,7 +154,9 @@ def main() -> None:
     ap.add_argument("--clean", action="append", default=[])
     ap.add_argument("--clean-ratio", type=float, default=1.0, help="real clean examples per real slop example")
     ap.add_argument("--max-cat-share", type=float, default=0.35, help="cap any one category's share of real slop")
-    ap.add_argument("--synthetic", type=int, default=3000)
+    ap.add_argument("--synthetic", type=int, default=3000, help="max synthetic examples")
+    ap.add_argument("--synthetic-ratio", type=float, default=1.0,
+                    help="synthetic examples per real example (keeps real data from being drowned out)")
     ap.add_argument("--source", action="append", default=[])
     ap.add_argument("--commitpackft", default=None)
     ap.add_argument("--mix", default="0.30,0.25,0.45", help="synthetic clean,decoy,slop")
@@ -163,8 +167,10 @@ def main() -> None:
 
     slop = load_real_slop(a.labeled, a.max_cat_share, a.seed)
     clean = load_real_clean(a.clean, cap=int(len(slop) * a.clean_ratio) if slop else 10**9)
-    synth = synthetic(a.source, a.commitpackft, a.synthetic, [float(x) for x in a.mix.split(",")], a.seed) \
-        if (a.source or a.commitpackft) and a.synthetic else []
+    n_synth = min(a.synthetic, int(a.synthetic_ratio * (len(slop) + len(clean)))) if (slop or clean) else a.synthetic
+    print(f"real clean: {len(clean)}   synthetic: {n_synth}", file=sys.stderr)
+    synth = synthetic(a.source, a.commitpackft, n_synth, [float(x) for x in a.mix.split(",")], a.seed) \
+        if (a.source or a.commitpackft) and n_synth else []
 
     splits: dict[str, list] = defaultdict(list)
     for ex in slop + clean:

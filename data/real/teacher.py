@@ -33,6 +33,9 @@ Tips:
 - dead-or-placeholder = TODO/FIXME placeholders, commented-out code, unused functions/variables, leftover stubs.
 - Leftover debug output (console.log, print, fmt.Println) → log-noise.
 
+- needless-abstraction / hallucinated-api ONLY when the reviewer explicitly says the code is unnecessary,
+  over-engineered, unused, or that the API does not exist. A bare question ("why is this needed?") → slop=false.
+
 NOT slop (answer slop=false): bugs and logic errors, naming, formatting/style, performance, security,
 missing tests, questions, design debates, requests for MORE code/checks/comments, praise, unclear comments.
 
@@ -92,40 +95,78 @@ _OBJ = re.compile(r"\{.*\}", re.S)
 _MENTIONS_REVIEWER = re.compile(r"\b(the )?(reviewer|commenter)\b|\bas (mentioned|noted)\b", re.I)
 
 
-def parse_teacher(text: str, row: dict) -> tuple[str, dict | None]:
-    """Validate the teacher's answer against the hunk. Returns (label, finding)."""
+_DEFAULT_SEV = {"over-defensive": "medium", "redundant-comment": "low", "verbose-docstring": "low",
+                "needless-abstraction": "medium", "dead-or-placeholder": "medium", "log-noise": "low",
+                "hallucinated-api": "high"}
+_CAT_ALIASES = {"dead-code": "dead-or-placeholder", "unused-code": "dead-or-placeholder", "placeholder":
+                "dead-or-placeholder", "todo": "dead-or-placeholder", "debug-log": "log-noise", "logging":
+                "log-noise", "comment": "redundant-comment", "redundant-comments": "redundant-comment",
+                "unnecessary-comment": "redundant-comment", "over-engineering": "needless-abstraction",
+                "docstring": "verbose-docstring", "defensive": "over-defensive"}
+# A category the model can't judge from one hunk needs the reviewer to have said so explicitly.
+_EXPLICIT = re.compile(r"unnecessar|not needed|no need|over.?engineer|redundant|unused|never used|not used|"
+                       r"overkill|yagni|inline|wrapper|indirection|simplif|doesn.t exist|does not exist|"
+                       r"no such|not a (real|valid)|hallucinat|remove", re.I)
+
+
+def parse_teacher_explain(text: str, row: dict) -> tuple[str, dict | None, str]:
+    """Validate (and where safe, repair) the teacher's answer. Returns (label, finding, why)."""
     m = _OBJ.search(text or "")
     if not m:
-        return "invalid", None
+        return "invalid", None, "no-json"
     try:
         d = json.loads(m.group(0))
     except json.JSONDecodeError:
-        return "invalid", None
+        return "invalid", None, "bad-json"
     if d.get("slop") is False:
-        return "not_slop", None
+        return "not_slop", None, ""
     if d.get("slop") is not True:
-        return "invalid", None
-    try:
-        line, end = int(d["line"]), int(d.get("end_line") or d["line"])
-    except (KeyError, TypeError, ValueError):
-        return "invalid", None
-    cat, sev, reason = d.get("category"), d.get("severity"), str(d.get("reason") or "").strip()
-    added = {n for n, k, _ in row["hunk"] if k == "+"}
-    if cat not in CATEGORIES or sev not in SEVERITIES or not reason or len(reason) > 300 or end < line:
-        return "invalid", None
-    if not {line, end} <= added or end - line > 25:
-        return "invalid", None
-    anchor = row.get("anchor")
-    if anchor and anchor in added and not (line - 3 <= anchor <= end + 3):
-        return "invalid", None           # teacher pointed somewhere other than where the human commented
+        return "invalid", None, "no-slop-flag"
+    cat = str(d.get("category") or "").strip().lower()
+    cat = _CAT_ALIASES.get(cat, cat)
+    if cat not in CATEGORIES:
+        return "invalid", None, "unknown-category"
+    if cat in ("needless-abstraction", "hallucinated-api") and not _EXPLICIT.search(row.get("comment") or ""):
+        return "not_slop", None, "vague-comment"     # e.g. a bare "why is this needed?"
+    sev = d.get("severity") if d.get("severity") in SEVERITIES else _DEFAULT_SEV[cat]
+    reason = str(d.get("reason") or "").strip()
+    if not reason:
+        return "invalid", None, "no-reason"
+    if len(reason) > 300:
+        reason = reason[:297].rsplit(" ", 1)[0] + "..."
     if _MENTIONS_REVIEWER.search(reason):
-        return "invalid", None
+        return "invalid", None, "mentions-reviewer"
+    added = sorted(n for n, k, _ in row["hunk"] if k == "+")
+    if not added:
+        return "invalid", None, "no-added-lines"
+    try:
+        line = int(d["line"])
+        end = int(d.get("end_line") or line)
+    except (KeyError, TypeError, ValueError):
+        line = end = None
+    anchor = row.get("anchor") if row.get("anchor") in added else None
+    if line is not None and end < line:
+        line, end = end, line
+    if line is not None:                                   # clip the span to added lines
+        inside = [n for n in added if line <= n <= end]
+        line, end = (inside[0], inside[-1]) if inside else (None, None)
+    if anchor and (line is None or not (line - 3 <= anchor <= end + 3)):
+        line = end = anchor                                # trust where the human actually commented
+    if line is None:
+        return "invalid", None, "no-valid-lines"
+    if end - line > 25:
+        return "invalid", None, "span-too-long"
     span_text = [t for n, k, t in row["hunk"] if line <= n <= end]
     if not consistent(cat, reason, span_text):
-        return "invalid", None
+        return "invalid", None, "inconsistent"
     fix = d.get("fix")
     return "slop", {"line": line, "end_line": end, "category": cat, "severity": sev, "reason": reason,
-                    "fix": fix if isinstance(fix, str) else None}
+                    "fix": fix if isinstance(fix, str) else None}, ""
+
+
+def parse_teacher(text: str, row: dict) -> tuple[str, dict | None]:
+    label, finding, _ = parse_teacher_explain(text, row)
+    return label, finding
 
 
 # ---- runners ------------------------------------------------------------------------------------------
@@ -226,9 +267,10 @@ def main() -> None:
     counts = {"slop": 0, "not_slop": 0, "invalid": 0}
     with out.open("a", encoding="utf-8") as fh:
         for n, (r, text) in enumerate(gen, 1):
-            label, finding = parse_teacher(text, r)
+            label, finding, why = parse_teacher_explain(text, r)
             counts[label] += 1
-            fh.write(json.dumps({**r, "label": label, "finding": finding, "raw": text[:600]}, ensure_ascii=False) + "\n")
+            fh.write(json.dumps({**r, "label": label, "finding": finding, "why": why, "raw": text[:2000]},
+                                ensure_ascii=False) + "\n")
             if n % 50 == 0:
                 fh.flush()
                 print(f"  {n}/{len(rows)}  {counts}")

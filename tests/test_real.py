@@ -43,12 +43,13 @@ def test_parse_teacher_accepts_valid_and_rejects_bad_spans():
     label, f = parse_teacher("sure! " + ok, row())
     assert label == "slop" and f["line"] == 11 and f["fix"].strip() == "self.client.post(data)"
     assert parse_teacher('{"slop": false}', row()) == ("not_slop", None)
-    assert parse_teacher(ok.replace('"line": 11', '"line": 10'), row())[0] == "invalid"       # context line
+    label, f = parse_teacher(ok.replace('"line": 11', '"line": 10'), row())    # span starts on a context line
+    assert label == "slop" and (f["line"], f["end_line"]) == (11, 14)          # → clipped to the added lines
     assert parse_teacher(ok.replace("over-defensive", "made-up"), row())[0] == "invalid"
     assert parse_teacher(ok.replace("Catch-all", "The reviewer says catch-all"), row())[0] == "invalid"
     assert parse_teacher("no json here", row())[0] == "invalid"
     far = row(hunk=[[n, "+", "x"] for n in range(1, 40)], anchor=35)
-    assert parse_teacher(ok, far)[0] == "invalid"   # points far away from where the human commented
+    assert parse_teacher(ok, far)[0] == "invalid"   # snapped to line 35 (where the human commented): no try/except there
 
 
 def test_language_aware_hunks_and_tests():
@@ -87,3 +88,14 @@ def test_merge_attaches_sibling_findings_to_overlapping_hunks(tmp_path):
     exs = sorted(load_real_slop([str(p)], max_cat_share=1.0), key=lambda e: len(e["hunk"].lines))
     assert [f.line for f in exs[0]["findings"]] == [2]
     assert [f.line for f in exs[1]["findings"]] == [2, 4]     # sibling's line 2 is labelled here too
+
+
+def test_parse_teacher_repairs_and_explains():
+    from teacher import parse_teacher_explain
+    r = row(comment="why is this needed?")
+    vague = '{"slop": true, "category": "needless-abstraction", "line": 11, "end_line": 14, "reason": "Not needed."}'
+    assert parse_teacher_explain(vague, r)[:1] == ("not_slop",) and parse_teacher_explain(vague, r)[2] == "vague-comment"
+    alias = '{"slop": true, "category": "dead-code", "line": 14, "end_line": 14, "reason": "Leftover stub."}'
+    label, f, _ = parse_teacher_explain(alias, row())
+    assert label == "slop" and f["category"] == "dead-or-placeholder" and f["severity"] == "medium"
+    assert parse_teacher_explain("nope", row())[2] == "no-json"
