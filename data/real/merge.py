@@ -37,7 +37,11 @@ def bucket(key: str) -> float:
     return int(hashlib.md5(key.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
 
 
-def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13) -> list[dict]:
+GATED = {"needless-abstraction", "hallucinated-api"}   # off by default at review time: keep them a minority
+
+
+def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13,
+                   gated_share: float = 0.10) -> list[dict]:
     """One example per distinct hunk. Findings from *sibling* comments (same PR + file) are attached to
     every hunk that contains those exact lines, so a flagged line is never left unlabelled elsewhere."""
     from teacher import consistent
@@ -87,14 +91,17 @@ def load_real_slop(paths: list[str], max_cat_share: float = 0.35, seed: int = 13
     print(f"real slop: {len(rows)} labelled rows -> {len(out)} distinct hunks", file=sys.stderr)
     random.Random(seed).shuffle(out)
     cap = max(1, int(max_cat_share * len(out)))
+    gcap = max(1, int(gated_share * len(out)))
     kept, per_cat = [], Counter()
     for ex in out:
         main = ex["findings"][0].category
-        if per_cat[main] >= cap and len({f.category for f in ex["findings"]}) == 1:
+        limit = gcap if main in GATED else cap
+        if per_cat[main] >= limit and len({f.category for f in ex["findings"]}) == 1:
             continue
         per_cat[main] += 1
         kept.append(ex)
-    print(f"real slop: {len(kept)} after the {max_cat_share:.0%} per-category cap {dict(per_cat)}", file=sys.stderr)
+    print(f"real slop: {len(kept)} after caps ({max_cat_share:.0%}, gated {gated_share:.0%}) {dict(per_cat)}",
+          file=sys.stderr)
     return kept
 
 
@@ -154,6 +161,8 @@ def main() -> None:
     ap.add_argument("--clean", action="append", default=[])
     ap.add_argument("--clean-ratio", type=float, default=1.0, help="real clean examples per real slop example")
     ap.add_argument("--max-cat-share", type=float, default=0.35, help="cap any one category's share of real slop")
+    ap.add_argument("--gated-share", type=float, default=0.10,
+                    help="cap for categories that are off by default (needless-abstraction, hallucinated-api)")
     ap.add_argument("--synthetic", type=int, default=3000, help="max synthetic examples")
     ap.add_argument("--synthetic-ratio", type=float, default=1.0,
                     help="synthetic examples per real example (keeps real data from being drowned out)")
@@ -165,7 +174,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=13)
     a = ap.parse_args()
 
-    slop = load_real_slop(a.labeled, a.max_cat_share, a.seed)
+    slop = load_real_slop(a.labeled, a.max_cat_share, a.seed, a.gated_share)
     clean = load_real_clean(a.clean, cap=int(len(slop) * a.clean_ratio) if slop else 10**9)
     n_synth = min(a.synthetic, int(a.synthetic_ratio * (len(slop) + len(clean)))) if (slop or clean) else a.synthetic
     print(f"real clean: {len(clean)}   synthetic: {n_synth}", file=sys.stderr)

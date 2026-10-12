@@ -106,7 +106,7 @@ _CAT_ALIASES = {"dead-code": "dead-or-placeholder", "unused-code": "dead-or-plac
 # A category the model can't judge from one hunk needs the reviewer to have said so explicitly.
 _EXPLICIT = re.compile(r"unnecessar|not needed|no need|over.?engineer|redundant|unused|never used|not used|"
                        r"overkill|yagni|inline|wrapper|indirection|simplif|doesn.t exist|does not exist|"
-                       r"no such|not a (real|valid)|hallucinat|remove", re.I)
+                       r"no such|not a (real|valid)|hallucinat|can be removed|should be removed|dead code", re.I)
 
 
 def parse_teacher_explain(text: str, row: dict) -> tuple[str, dict | None, str]:
